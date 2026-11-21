@@ -14,6 +14,8 @@ export const createProvider = (config = aiConfig, deps = {}) => {
         throw new AIProviderError(AI_ERROR_CODES.NOT_CONFIGURED, `Faltan variables: ${missing.join(', ')}`)
     }
     switch (config.provider) {
+        // Gemini usa su API compatible con OpenAI (chat/completions + Bearer)
+        case 'gemini': return { ...createOpenAICompatibleProvider(config, deps), name: 'gemini' }
         case 'anthropic': return createAnthropicProvider(config, deps)
         case 'openai-compatible': return createOpenAICompatibleProvider(config, deps)
         default: return createMockProvider()

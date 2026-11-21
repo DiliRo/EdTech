@@ -33,7 +33,21 @@ export const createOpenAICompatibleProvider = (config, { fetchImpl = globalThis.
             config.timeoutMs
         )
 
-        if (!response.ok) throw errorFromStatus(response.status)
+        if (!response.ok) {
+            // Google (Gemini) responde 400 cuando la clave es inválida; se detecta por el mensaje
+            let detail = ''
+            try {
+                const errorBody = await response.json()
+                const item = Array.isArray(errorBody) ? errorBody[0] : errorBody
+                detail = `${item?.error?.message ?? ''} ${item?.error?.status ?? ''}`
+            } catch {
+                // cuerpo vacío o no JSON: se clasifica solo por el código HTTP
+            }
+            if (response.status === 400 && /api[_ ]?key|PERMISSION_DENIED|UNAUTHENTICATED/i.test(detail)) {
+                throw new AIProviderError(AI_ERROR_CODES.AUTH, 'Clave rechazada')
+            }
+            throw errorFromStatus(response.status)
+        }
 
         let body
         try {

@@ -65,10 +65,11 @@ curl http://localhost:3000/api/health
 | `LOGIN_WINDOW_MINUTES` | No | `15`                    | Ventana del límite de login                   |
 | `REGISTER_MAX_PER_HOUR` | No| `10`                    | Registros por IP por hora                     |
 | `PERFORMANCE_THRESHOLD` | No| `60`                    | Umbral (% de logro) para señalar resultados   |
-| `AI_PROVIDER` | No | `mock` | `mock`, `anthropic` u `openai-compatible` (ver sección de guías) |
+| `AI_PROVIDER` | No | `mock` | `gemini` (recomendado), `mock`, `anthropic` u `openai-compatible` |
 | `AI_API_KEY`, `AI_MODEL` | Con proveedor real | — | Clave y modelo del proveedor |
 | `AI_BASE_URL` | Con `openai-compatible` | — | URL base, p. ej. `https://api.openai.com/v1` |
 | `AI_ANTHROPIC_VERSION` | No | `2023-06-01` | Cabecera `anthropic-version` |
+| `AI_TIMEOUT_MS` / `AI_MAX_OUTPUT_TOKENS` con `gemini` | No | `45000` / `4096` | Márgenes mayores por el razonamiento del modelo |
 | `AI_REASONING_EFFORT` | No | — | Solo `openai-compatible`: `none`, `minimal`, `low`, `medium` o `high` |
 | `PEDAGOGICAL_CLASSIFICATION` | No | `vark` | Clasificación por defecto del seguimiento: `vark` o `honey-alonso` |
 | `AI_TIMEOUT_MS` | No | `30000` | Tiempo máximo de espera por llamada |
@@ -859,13 +860,38 @@ El servicio está desacoplado del proveedor (`src/services/ai/`). Todos implemen
 
 | `AI_PROVIDER` | Uso |
 |---|---|
-| `mock` (por defecto) | Sin llamadas externas. Devuelve una guía de **[EJEMPLO]** válida; sirve para desarrollar sin clave |
+| **`gemini`** (recomendado) | Google Gemini con `gemini-3.8-flash` por defecto, mediante su API compatible con OpenAI. Solo necesita `AI_API_KEY` |
+| `mock` (si no se configura) | Sin llamadas externas. Devuelve contenido de **[EJEMPLO]** válido; sirve para desarrollar sin clave |
 | `anthropic` | Messages API (`AI_API_KEY`, `AI_MODEL`, `AI_ANTHROPIC_VERSION`) |
 | `openai-compatible` | Cualquier API con `POST {AI_BASE_URL}/chat/completions` en modo JSON |
 
 Si falta la clave o el modelo de un proveedor real, la generación responde 503 sin mostrar detalles.
 
-#### Usar un proveedor gratuito
+#### Configurar Gemini
+
+En tu `.env` (no en `.env.example`, que sí se sube al repositorio):
+
+```env
+AI_PROVIDER=gemini
+AI_API_KEY=tu-clave-de-google-ai-studio
+AI_MODEL=gemini-3.8-flash
+```
+
+Comprueba la conexión antes de usar la API:
+
+```bash
+npm run ai:check
+```
+
+El script hace una sola llamada mínima, muestra el proveedor, el modelo, el tiempo de respuesta y
+los tokens, y nunca imprime la clave. Si falla, explica la causa probable (clave rechazada, cuota
+agotada, modelo inválido, tiempo de espera).
+
+Valores por defecto de `gemini`: URL `https://generativelanguage.googleapis.com/v1beta/openai`,
+modelo `gemini-3.8-flash`, `reasoning_effort: low`, 4096 tokens de salida y 45 s de espera. Todos se
+pueden cambiar en `.env`.
+
+#### Usar otro proveedor gratuito
 
 Las tres opciones usan `AI_PROVIDER=openai-compatible`. Elige el modelo en la lista de modelos del
 proveedor (los nombres cambian con frecuencia) y colócalo en `AI_MODEL`.
