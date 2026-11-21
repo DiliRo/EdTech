@@ -4,7 +4,7 @@ Backend de **edTech**, plataforma de apoyo pedagógico para docentes de primaria
 
 Stack: Node.js (≥ 22) · Express 5 · MongoDB con Mongoose · módulos ES.
 
-> Estado: base del proyecto + **autenticación y perfil de docentes** + **catálogo académico (solo lectura)** + **aulas y estudiantes** + **metodologías**.
+> Estado: base del proyecto + **autenticación y perfil de docentes** + **catálogo académico (solo lectura)** + **aulas y estudiantes** + **metodologías** + **evaluaciones y seguimiento**.
 > Solo los docentes tienen cuenta; los estudiantes no tienen usuario, correo ni contraseña.
 
 ## Instalación
@@ -64,6 +64,7 @@ curl http://localhost:3000/api/health
 | `LOGIN_MAX_ATTEMPTS` | No   | `5`                     | Intentos fallidos de login por IP + correo    |
 | `LOGIN_WINDOW_MINUTES` | No | `15`                    | Ventana del límite de login                   |
 | `REGISTER_MAX_PER_HOUR` | No| `10`                    | Registros por IP por hora                     |
+| `PERFORMANCE_THRESHOLD` | No| `60`                    | Umbral (% de logro) para señalar resultados   |
 
 Si falta una variable obligatoria o MongoDB no responde, el servidor no arranca y muestra el motivo en consola.
 
@@ -655,6 +656,184 @@ se rechazan.
 { "success": false, "message": "Las metodologías predeterminadas no se pueden modificar. Puedes crear una propia basada en ella." }
 ```
 
+### Evaluaciones y seguimiento académico
+
+Reglas:
+
+- Las calificaciones se relacionan con el estudiante por **`studentId`** (su `_id` permanente). En
+  las respuestas se muestra el **`studentCode` actual**; si el docente cambia el código, los
+  resultados se conservan y aparecen con el código nuevo. Enviar `studentCode` en lugar de
+  `studentId` da 400.
+- Cada estudiante debe pertenecer al aula evaluada. Si no (o si no existe), el mensaje es el mismo:
+  no se revela información de otras aulas.
+- Un solo resultado por evaluación y estudiante (validación + índice único `{ assessmentId, studentId }`).
+- **Una calificación faltante no es cero**: los estudiantes que no se envían quedan *pendientes* y no
+  participan en promedios. Sin datos, los indicadores son `null`.
+- **Correcciones**: volver a enviar la nota de un estudiante la corrige y guarda en `corrections` el
+  valor anterior, la fecha (`changedAt`), el docente (`changedBy`) y un motivo opcional.
+- Solo el docente dueño del aula y de la evaluación accede (otros reciben 404).
+- **Los indicadores apoyan al docente; no son diagnósticos.** Las respuestas de progreso y
+  rendimiento incluyen `meta.note` con esa aclaración.
+
+| Método y ruta | Descripción |
+|---|---|
+| `POST /api/assessments` | Crea una evaluación |
+| `GET /api/assessments?classroomId=&subjectId=&assessmentType=&from=&to=` | Evaluaciones propias |
+| `GET /api/assessments/:id` | Detalle, calificaciones (con `studentCode`), pendientes y resumen |
+| `POST /api/assessments/:id/results` | Registro masivo y correcciones |
+| `GET /api/students/:id/results?subjectId=&from=&to=` | Historial del estudiante |
+| `GET /api/students/:id/progress?subjectId=&from=&to=&threshold=` | Promedio, evolución y tendencia |
+| `GET /api/classrooms/:id/performance?subjectId=&from=&to=&threshold=` | Estadísticas del aula |
+
+Cálculos (`src/utils/performance.js`):
+
+| Indicador | Cálculo |
+|---|---|
+| `percentage` | `score / maxScore × 100`, 2 decimales |
+| Promedios | Media de los **porcentajes** registrados (permite comparar evaluaciones con distinta nota máxima) |
+| `trend.change` | Último porcentaje − primero (puntos) |
+| `trend.direction` | `up` si ≥ +5, `down` si ≤ −5, `stable` en otro caso, `null` con menos de 2 resultados |
+| `belowThreshold` | Promedio < umbral (por defecto `PERFORMANCE_THRESHOLD`, ajustable con `?threshold=`). Sin datos nunca se señala |
+| `completionRate` | Calificaciones registradas de estudiantes activos / (evaluaciones × estudiantes activos) |
+
+#### `POST /api/assessments`
+
+```json
+{
+  "title": "Prueba corta de sumas",
+  "classroomId": "6b01ea929905a84c102ca36e",
+  "subjectId": "6b01ea929905a84c102ca367",
+  "topicId": null,
+  "teachingMethodId": null,
+  "assessmentDate": "2026-03-10",
+  "maxScore": 20,
+  "assessmentType": "formativa"
+}
+```
+
+`assessmentType`: `diagnostica`, `formativa` o `sumativa`. La materia debe estar asignada al aula
+(o impartirse en su grado si el aula no tiene materias); el tema debe ser de esa materia y grado; la
+metodología debe ser predeterminada o propia. `maxScore` no se puede cambiar después.
+
+#### `POST /api/assessments/:id/results`
+
+```json
+{
+  "results": [
+    { "studentId": "6b01ea929905a84c102ca371", "score": 16 },
+    { "studentId": "6b01ea939905a84c102ca372", "score": 8, "observations": "Repasar restas" }
+  ]
+}
+```
+
+**200**
+```json
+{
+  "success": true,
+  "message": "Calificaciones registradas",
+  "data": {
+    "summary": { "created": 2, "updated": 0, "unchanged": 0 },
+    "results": [
+      {
+        "id": "6b01ea939905a84c102ca378",
+        "assessmentId": "6b01ea939905a84c102ca376",
+        "studentId": "6b01ea929905a84c102ca371",
+        "studentCode": "A01",
+        "studentIsActive": true,
+        "score": 16,
+        "percentage": 80,
+        "observations": "",
+        "recordedBy": "6b01ea929905a84c102ca369",
+        "corrections": [],
+        "createdAt": "2026-11-21T19:01:39.023Z",
+        "updatedAt": "2026-11-21T19:01:39.023Z"
+      }
+    ]
+  }
+}
+```
+
+Corrección: `{ "results": [{ "studentId": "...", "score": 9, "correctionReason": "Error al transcribir" }] }`
+
+```json
+"corrections": [
+  {
+    "previousScore": 8,
+    "previousPercentage": 40,
+    "previousObservations": "Repasar restas",
+    "changedAt": "2026-11-21T19:01:39.029Z",
+    "changedBy": "6b01ea929905a84c102ca369",
+    "reason": "Error al transcribir"
+  }
+]
+```
+
+Si algún elemento es inválido (estudiante de otra aula, nota mayor a `maxScore`, estudiante repetido
+o archivado sin nota previa) se responde 400 y **no se guarda nada**.
+
+#### `GET /api/students/:id/progress`
+
+```json
+{
+  "success": true,
+  "message": "Progreso del estudiante",
+  "data": {
+    "student": { "id": "6b01ea929905a84c102ca371", "studentCode": "A01", "classroomId": "6b01ea929905a84c102ca36e", "isActive": true },
+    "threshold": 60,
+    "summary": {
+      "resultsCount": 2,
+      "assessmentsWithoutResult": 0,
+      "averagePercentage": 85,
+      "medianPercentage": 85,
+      "minPercentage": 80,
+      "maxPercentage": 90,
+      "latestPercentage": 90,
+      "belowThreshold": false
+    },
+    "trend": { "change": 10, "direction": "up" },
+    "evolution": [
+      { "assessmentId": "6b01ea939905a84c102ca376", "title": "Marzo", "assessmentDate": "2026-03-10T00:00:00.000Z", "assessmentType": "formativa", "subjectId": "6b01ea929905a84c102ca367", "maxScore": 20, "score": 16, "percentage": 80 },
+      { "assessmentId": "6b01ea939905a84c102ca377", "title": "Abril", "assessmentDate": "2026-04-10T00:00:00.000Z", "assessmentType": "formativa", "subjectId": "6b01ea929905a84c102ca367", "maxScore": 20, "score": 18, "percentage": 90 }
+    ],
+    "bySubject": [
+      { "subjectId": "6b01ea929905a84c102ca367", "subjectName": "[PRUEBA] Mate", "resultsCount": 2, "assessmentsWithoutResult": 0, "averagePercentage": 85, "trend": { "change": 10, "direction": "up" } }
+    ]
+  },
+  "meta": { "note": "Indicadores de apoyo para el docente. Un resultado bajo no es un diagnóstico del estudiante; las evaluaciones sin calificación registrada no cuentan como cero." }
+}
+```
+
+#### `GET /api/classrooms/:id/performance` (resumido)
+
+```json
+{
+  "data": {
+    "classroom": { "id": "6b01ea929905a84c102ca36e", "name": "A", "isActive": true },
+    "threshold": 60,
+    "summary": {
+      "assessmentsCount": 2, "studentsCount": 3, "resultsCount": 4, "completionRate": 66.67,
+      "averagePercentage": 66.25, "medianPercentage": 65, "minPercentage": 45, "maxPercentage": 90,
+      "averageOfStudentAverages": 66.25
+    },
+    "belowThreshold": {
+      "threshold": 60,
+      "resultsCount": 2,
+      "students": [{ "studentId": "6b01ea939905a84c102ca372", "studentCode": "A02", "averagePercentage": 47.5, "resultsCount": 2 }]
+    },
+    "perAssessment": [
+      { "id": "6b01ea939905a84c102ca376", "title": "Marzo", "resultsCount": 2, "pendingCount": 1, "averagePercentage": 62.5, "belowThresholdCount": 1, "...": "..." }
+    ],
+    "perStudent": [
+      { "studentId": "6b01ea929905a84c102ca371", "studentCode": "A01", "isActive": true, "resultsCount": 2, "assessmentsWithoutResult": 0, "averagePercentage": 85, "trend": { "change": 10, "direction": "up" }, "belowThreshold": false },
+      { "studentId": "6b01ea939905a84c102ca373", "studentCode": "A03", "isActive": true, "resultsCount": 0, "assessmentsWithoutResult": 2, "averagePercentage": null, "trend": { "change": null, "direction": null }, "belowThreshold": false }
+    ]
+  },
+  "meta": { "note": "Indicadores de apoyo para el docente. ..." }
+}
+```
+
+`perStudent` incluye a los activos y a los archivados que tengan calificaciones.
+
 ### Formato de errores
 
 Todas las respuestas de error usan:
@@ -690,7 +869,8 @@ src/
 │   ├── languages.js        # idiomas soportados (fuente única)
 │   ├── curriculum.js       # niveles, rango de grados, orígenes y marca [PRUEBA]
 │   ├── classroom.js        # formato de studentCode, límites y filtros de estado
-│   └── methodology.js      # preferencias de aprendizaje, límites y alcances
+│   ├── methodology.js      # preferencias de aprendizaje, límites y alcances
+│   └── assessment.js       # tipos de evaluación, límites, umbral y nota de apoyo
 ├── models/
 │   ├── teacher.model.js    # Teacher (único usuario del sistema)
 │   ├── catalog.shared.js   # procedencia (source) y toJSON comunes del catálogo
@@ -699,7 +879,9 @@ src/
 │   ├── topic.model.js      # incluye toAIContext()
 │   ├── classroom.model.js
 │   ├── student.model.js    # solo studentCode, classroomId, isActive (strict: 'throw')
-│   └── teachingMethod.model.js
+│   ├── teachingMethod.model.js
+│   ├── assessment.model.js
+│   └── assessmentResult.model.js  # incluye historial de correcciones
 ├── routes/
 │   ├── index.js            # registra todas las rutas bajo /api
 │   ├── health.routes.js
@@ -708,7 +890,8 @@ src/
 │   ├── catalog.routes.js   # /api/grades, /api/subjects, /api/topics (solo GET)
 │   ├── classroom.routes.js # /api/classrooms y /api/classrooms/:id/students
 │   ├── student.routes.js   # /api/students/:id
-│   └── methodology.routes.js
+│   ├── methodology.routes.js
+│   └── assessment.routes.js
 ├── controllers/
 │   ├── health.controller.js
 │   ├── auth.controller.js
@@ -716,7 +899,8 @@ src/
 │   ├── catalog.controller.js
 │   ├── classroom.controller.js
 │   ├── student.controller.js
-│   └── methodology.controller.js
+│   ├── methodology.controller.js
+│   └── assessment.controller.js  # también historial, progreso y rendimiento
 ├── services/
 │   ├── health.service.js   # estado real de la BD (readyState + ping con timeout)
 │   ├── auth.service.js     # registro y login
@@ -726,7 +910,9 @@ src/
 │   ├── classroom.service.js      # findOwnedClassroom: comprobación de propiedad
 │   ├── student.service.js
 │   ├── methodology.service.js      # visibilidad, filtros y reglas de edición
-│   └── methodologySeed.service.js  # carga repetible de predeterminadas
+│   ├── methodologySeed.service.js  # carga repetible de predeterminadas
+│   ├── assessment.service.js       # evaluaciones, registro masivo y correcciones
+│   └── progress.service.js         # historial, progreso del estudiante y rendimiento del aula
 ├── middlewares/
 │   ├── auth.middleware.js       # requireAuth: verifica JWT y carga req.teacher
 │   ├── rateLimit.middleware.js  # límites de login y registro
@@ -741,9 +927,11 @@ src/
 │   ├── catalogFile.validator.js  # estructura de los archivos JSON del catálogo
 │   ├── classroom.validator.js
 │   ├── student.validator.js      # rechaza datos personales
-│   └── methodology.validator.js
+│   ├── methodology.validator.js
+│   └── assessment.validator.js
 └── utils/
     ├── AppError.js         # error controlado con código HTTP
+    ├── performance.js      # cálculos puros: porcentaje, promedio, mediana, tendencia, umbral
     ├── password.js         # bcrypt (hash y comparación)
     └── jwt.js              # firma y verificación de tokens
 scripts/
