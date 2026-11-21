@@ -23,6 +23,7 @@ export const createOpenAICompatibleProvider = (config, { fetchImpl = globalThis.
                     max_tokens: config.maxOutputTokens,
                     temperature: config.temperature,
                     response_format: { type: 'json_object' },
+                    ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort } : {}),
                     messages: [
                         { role: 'system', content: system },
                         { role: 'user', content: user }

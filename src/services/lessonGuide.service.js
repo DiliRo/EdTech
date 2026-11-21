@@ -1,15 +1,13 @@
 import LessonGuide, { MAX_GENERATIONS_KEPT } from '../models/lessonGuide.model.js'
-import AIUsageLog from '../models/aiUsageLog.model.js'
 import Grade from '../models/grade.model.js'
 import Subject from '../models/subject.model.js'
 import Topic from '../models/topic.model.js'
 import TeachingMethod from '../models/teachingMethod.model.js'
 import { AppError } from '../utils/AppError.js'
 import { aiConfig } from '../config/ai.js'
-import { getAIProvider } from './ai/index.js'
-import { AIProviderError, toHttp } from './ai/errors.js'
+import { runStructuredGeneration, assertDailyQuota } from './ai/runStructured.js'
 import { buildGuideContext, buildUserPrompt, SYSTEM_PROMPT, PROMPT_VERSION } from './ai/lessonGuidePrompt.js'
-import { extractJson, validateGuideContent } from '../validators/lessonGuideContent.js'
+import { validateGuideContent } from '../validators/lessonGuideContent.js'
 
 export const GUIDE_NOT_FOUND = 'Guía no encontrada'
 export const GUIDE_DISCLAIMER =
@@ -97,87 +95,17 @@ const uniqueStrings = (values) => [...new Set(values.map((v) => v.trim()).filter
 
 // ── Consumo de IA ────────────────────────────────────────────
 
-const startOfToday = (now) => {
-    const d = new Date(now)
-    d.setHours(0, 0, 0, 0)
-    return d
-}
-
-const assertDailyQuota = async (teacherId, now) => {
-    const used = await AIUsageLog.countDocuments({ teacherId, createdAt: { $gte: startOfToday(now) } })
-    if (used >= aiConfig.dailyLimitPerTeacher) {
-        throw new AppError(429, `Alcanzaste el límite de ${aiConfig.dailyLimitPerTeacher} generaciones con IA por día. Intenta mañana.`)
-    }
-    return used
-}
-
-const logUsage = (data) => new AIUsageLog(data).save().catch(() => {})
-
-/**
- * Llama al proveedor y valida la respuesta. Si el JSON no es válido reintenta (hasta
- * AI_MAX_ATTEMPTS) informando los errores. Cada intento se registra y cuenta para el límite diario.
- */
-const resolveProvider = () => {
-    try {
-        return getAIProvider()
-    } catch (err) {
-        // Proveedor mal configurado (falta clave o modelo): se registra en el servidor sin exponer detalles
-        console.error('IA | proveedor no disponible:', err?.message)
-        throw new AppError(503, toHttp(new AIProviderError('not_configured')).message)
-    }
-}
-
-const requestGuideFromAI = async (teacherId, context, allowedCompetencyCodes) => {
-    const provider = resolveProvider()
-    let feedback = null
-    let lastErrors = []
-    const usage = { inputTokens: 0, outputTokens: 0 }
-
-    for (let attempt = 1; attempt <= aiConfig.maxAttempts; attempt += 1) {
-        const user = buildUserPrompt(context, { maxInputChars: aiConfig.maxInputChars, retryFeedback: feedback })
-        const started = Date.now()
-        let response
-        try {
-            response = await provider.generate({ system: SYSTEM_PROMPT, user, context })
-        } catch (err) {
-            const code = err instanceof AIProviderError ? err.code : 'unavailable'
-            await logUsage({ teacherId, provider: provider.name, model: provider.model || 'desconocido', status: 'error', errorCode: code, latencyMs: Date.now() - started })
-            if (!(err instanceof AIProviderError)) console.error('IA | error inesperado del proveedor:', err?.message)
-            const { status, message } = toHttp(err instanceof AIProviderError ? err : new AIProviderError('unavailable'))
-            throw new AppError(status, message)
-        }
-
-        usage.inputTokens += response.usage?.inputTokens ?? 0
-        usage.outputTokens += response.usage?.outputTokens ?? 0
-
-        let content = null
-        if (typeof response.text === 'string' && response.text.length <= aiConfig.maxOutputChars) {
-            content = extractJson(response.text)
-        }
-        const { valid, errors } = content
-            ? validateGuideContent(content, { source: 'ai', durationMinutes: context.durationMinutes, allowedCompetencyCodes })
-            : { valid: false, errors: [{ field: 'respuesta', message: 'No es un objeto JSON válido o es demasiado larga' }] }
-
-        await logUsage({
-            teacherId,
-            provider: provider.name,
-            model: response.model || provider.model || 'desconocido',
-            status: valid ? 'success' : 'invalid_output',
-            inputTokens: response.usage?.inputTokens ?? null,
-            outputTokens: response.usage?.outputTokens ?? null,
-            latencyMs: Date.now() - started
-        })
-
-        if (valid) return { content, attempts: attempt, usage, provider: provider.name, model: response.model || provider.model }
-
-        lastErrors = errors
-        feedback = errors.slice(0, 5).map((e) => `${e.field}: ${e.message}`).join('; ')
-    }
-
-    const err = new AppError(502, toHttp(new AIProviderError('invalid_response')).message)
-    err.errors = lastErrors.slice(0, 10)
-    throw err
-}
+/** Pide la guía a la IA y valida que sea una guía completa sin competencias inventadas. */
+const requestGuideFromAI = (teacherId, context, allowedCompetencyCodes) =>
+    runStructuredGeneration({
+        teacherId,
+        feature: 'lesson-guide',
+        system: SYSTEM_PROMPT,
+        buildUser: (feedback) => buildUserPrompt(context, { maxInputChars: aiConfig.maxInputChars, retryFeedback: feedback }),
+        context,
+        validate: (content) =>
+            validateGuideContent(content, { source: 'ai', durationMinutes: context.durationMinutes, allowedCompetencyCodes })
+    })
 
 // ── Casos de uso ─────────────────────────────────────────────
 
