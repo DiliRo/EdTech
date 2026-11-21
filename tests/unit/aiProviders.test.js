@@ -155,6 +155,70 @@ describe('Proveedor compatible con OpenAI', () => {
     })
 })
 
+describe('Proveedor Gemini', () => {
+    const geminiConfig = (extra = {}) => loadAIConfig({ AI_PROVIDER: 'gemini', AI_API_KEY: 'clave-gemini', ...extra })
+
+    it('usa la API compatible de Google con gemini-3.8-flash y márgenes para el razonamiento', () => {
+        const config = geminiConfig()
+        assert.equal(config.provider, 'gemini')
+        assert.equal(config.baseUrl, 'https://generativelanguage.googleapis.com/v1beta/openai')
+        assert.equal(config.model, 'gemini-3.8-flash')
+        assert.equal(config.reasoningEffort, 'low')
+        assert.equal(config.maxOutputTokens, 4096)
+        assert.equal(config.timeoutMs, 45000)
+        assert.deepEqual(validateAIConfig(config), [])
+    })
+
+    it('permite sobrescribir modelo, URL, razonamiento y límites desde .env', () => {
+        const config = geminiConfig({
+            AI_MODEL: 'otro-modelo', AI_BASE_URL: 'https://proxy.example/v1/', AI_REASONING_EFFORT: 'medium',
+            AI_MAX_OUTPUT_TOKENS: '3000', AI_TIMEOUT_MS: '20000'
+        })
+        assert.equal(config.model, 'otro-modelo')
+        assert.equal(config.baseUrl, 'https://proxy.example/v1')
+        assert.equal(config.reasoningEffort, 'medium')
+        assert.equal(config.maxOutputTokens, 3000)
+        assert.equal(config.timeoutMs, 20000)
+    })
+
+    it('sin clave no se crea', () => {
+        const config = loadAIConfig({ AI_PROVIDER: 'gemini' })
+        assert.deepEqual(validateAIConfig(config), ['AI_API_KEY'])
+        assert.throws(() => createProvider(config), (err) => err.code === 'not_configured')
+    })
+
+    it('llama a chat/completions de Gemini con Bearer, modo JSON y reasoning_effort', async () => {
+        const fetch = recordingFetch(fakeFetchResponse(200, {
+            model: 'gemini-3.8-flash',
+            choices: [{ finish_reason: 'stop', message: { content: '{"ok":true}' } }],
+            usage: { prompt_tokens: 40, completion_tokens: 10 }
+        }))
+        const provider = createProvider(geminiConfig(), { fetchImpl: fetch })
+        const result = await provider.generate({ system: 'S', user: 'U' })
+
+        assert.equal(provider.name, 'gemini')
+        assert.equal(result.model, 'gemini-3.8-flash')
+        const [call] = fetch.calls
+        assert.equal(call.url, 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions')
+        assert.equal(call.options.headers.authorization, 'Bearer clave-gemini')
+        assert.equal(call.body.model, 'gemini-3.8-flash')
+        assert.equal(call.body.reasoning_effort, 'low')
+        assert.equal(call.body.max_tokens, 4096)
+        assert.deepEqual(call.body.response_format, { type: 'json_object' })
+    })
+
+    it('una clave rechazada por Google se informa como error de autenticación', async () => {
+        const invalidKey = fakeFetchResponse(400, [{ error: { code: 400, message: 'API key not valid. Please pass a valid API key.', status: 'INVALID_ARGUMENT' } }])
+        await assert.rejects(createProvider(geminiConfig(), { fetchImpl: recordingFetch(invalidKey) }).generate({}), (err) => err.code === 'auth')
+
+        const otherBadRequest = fakeFetchResponse(400, { error: { message: 'Invalid model', status: 'INVALID_ARGUMENT' } })
+        await assert.rejects(createProvider(geminiConfig(), { fetchImpl: recordingFetch(otherBadRequest) }).generate({}), (err) => err.code === 'unavailable')
+
+        const unauthorized = createProvider(geminiConfig(), { fetchImpl: recordingFetch(fakeFetchResponse(401, {})) })
+        await assert.rejects(unauthorized.generate({}), (err) => err.code === 'auth')
+    })
+})
+
 describe('Proveedor simulado (mock)', () => {
     it('devuelve una guía de EJEMPLO que pasa la validación', async () => {
         const context = { durationMinutes: 40, topic: { name: 'Fracciones', competencies: [{ code: '2' }] } }
