@@ -7,6 +7,7 @@ import classroomRoutes from './classroom.routes.js'
 import studentRoutes from './student.routes.js'
 import methodologyRoutes from './methodology.routes.js'
 import assessmentRoutes from './assessment.routes.js'
+import lessonGuideRoutes from './lessonGuide.routes.js'
 
 // Punto único donde se registran las rutas de la API. Cada módulo nuevo agrega aquí su router.
 const router = Router()
@@ -21,5 +22,6 @@ router.use('/classrooms', classroomRoutes)
 router.use('/students', studentRoutes)
 router.use('/methodologies', methodologyRoutes)
 router.use('/assessments', assessmentRoutes)
+router.use('/lesson-guides', lessonGuideRoutes)
 
 export default router

@@ -4,7 +4,7 @@ Backend de **edTech**, plataforma de apoyo pedagógico para docentes de primaria
 
 Stack: Node.js (≥ 22) · Express 5 · MongoDB con Mongoose · módulos ES.
 
-> Estado: base del proyecto + **autenticación y perfil de docentes** + **catálogo académico (solo lectura)** + **aulas y estudiantes** + **metodologías** + **evaluaciones y seguimiento**.
+> Estado: base del proyecto + **autenticación y perfil de docentes** + **catálogo académico (solo lectura)** + **aulas y estudiantes** + **metodologías** + **evaluaciones y seguimiento** + **guías de clase con IA**.
 > Solo los docentes tienen cuenta; los estudiantes no tienen usuario, correo ni contraseña.
 
 ## Instalación
@@ -65,6 +65,16 @@ curl http://localhost:3000/api/health
 | `LOGIN_WINDOW_MINUTES` | No | `15`                    | Ventana del límite de login                   |
 | `REGISTER_MAX_PER_HOUR` | No| `10`                    | Registros por IP por hora                     |
 | `PERFORMANCE_THRESHOLD` | No| `60`                    | Umbral (% de logro) para señalar resultados   |
+| `AI_PROVIDER` | No | `mock` | `mock`, `anthropic` u `openai-compatible` (ver sección de guías) |
+| `AI_API_KEY`, `AI_MODEL` | Con proveedor real | — | Clave y modelo del proveedor |
+| `AI_BASE_URL` | Con `openai-compatible` | — | URL base, p. ej. `https://api.openai.com/v1` |
+| `AI_ANTHROPIC_VERSION` | No | `2023-06-01` | Cabecera `anthropic-version` |
+| `AI_TIMEOUT_MS` | No | `30000` | Tiempo máximo de espera por llamada |
+| `AI_MAX_OUTPUT_TOKENS` | No | `2500` | Tokens máximos de respuesta |
+| `AI_MAX_INPUT_CHARS` / `AI_MAX_OUTPUT_CHARS` | No | `12000` / `20000` | Longitud máxima del prompt y de la respuesta |
+| `AI_MAX_ATTEMPTS` | No | `2` | Intentos si la respuesta no es JSON válido |
+| `AI_DAILY_LIMIT_PER_TEACHER` | No | `20` | Llamadas a la IA por docente por día |
+| `AI_RATE_LIMIT_PER_MINUTE` | No | `5` | Generaciones por docente por minuto |
 
 Si falta una variable obligatoria o MongoDB no responde, el servidor no arranca y muestra el motivo en consola.
 
@@ -834,6 +844,161 @@ o archivado sin nota previa) se responde 400 y **no se guarda nada**.
 
 `perStudent` incluye a los activos y a los archivados que tengan calificaciones.
 
+### Guías de clase con IA
+
+Genera **propuestas editables** de guías de clase a partir del grado, la materia, el tema (con sus
+competencias e indicadores del catálogo), la metodología y la duración. La guía no es una instrucción
+obligatoria: el docente la revisa, la edita y decide si la aprueba.
+
+#### Proveedor de IA
+
+El servicio está desacoplado del proveedor (`src/services/ai/`). Todos implementan
+`generate({ system, user, context }) → { text, usage, model }`.
+
+| `AI_PROVIDER` | Uso |
+|---|---|
+| `mock` (por defecto) | Sin llamadas externas. Devuelve una guía de **[EJEMPLO]** válida; sirve para desarrollar sin clave |
+| `anthropic` | Messages API (`AI_API_KEY`, `AI_MODEL`, `AI_ANTHROPIC_VERSION`) |
+| `openai-compatible` | Cualquier API con `POST {AI_BASE_URL}/chat/completions` en modo JSON |
+
+Si falta la clave o el modelo de un proveedor real, la generación responde 503 sin mostrar detalles.
+
+#### Seguridad y límites
+
+- **Sin datos de estudiantes**: el contexto se arma con una lista blanca (grado, materia, tema,
+  metodología, duración, instrucciones adicionales). Nunca se envían aulas, códigos, calificaciones
+  ni datos del docente.
+- **Instrucciones del sistema fijas**: el prompt del sistema es constante. Todo el contenido del
+  catálogo, de las metodologías (incluidas las personalizadas) y las instrucciones del docente va
+  dentro de un bloque `<datos>` marcado como información, no instrucciones. Los signos `<` y `>` se
+  neutralizan para que nadie pueda cerrar ese bloque, y cada campo se recorta.
+- **Sin competencias inventadas**: las competencias e indicadores de la guía vienen del catálogo
+  (se guardan en `generations[].curriculum`). Si la IA cita en `competenciesUsed` un código que no
+  existe en el tema, la respuesta se rechaza.
+- **Falta de información curricular**: el servidor detecta los vacíos (sin tema, datos de prueba,
+  sin competencias, sin indicadores, sin referencia al documento) y los guarda en `curriculumGaps`,
+  junto con los que reporte la IA.
+- **Evaluación alineada**: cada pregunta de `shortAssessment` debe indicar `objectiveIndex`, un
+  objetivo existente de la guía.
+- **Validación antes de guardar**: la respuesta debe ser un JSON con todas las secciones, sin campos
+  extra, dentro de los límites de longitud y con fases que no superen la duración. Si no es válida se
+  reintenta una vez (`AI_MAX_ATTEMPTS`) indicando los errores; si vuelve a fallar responde 502 y no se
+  guarda nada.
+- **Consumo**: tiempo de espera por llamada, tokens máximos, límite de longitud de entrada y
+  salida, límite por minuto y límite diario por docente. Cada llamada (incluso fallida) queda en
+  `AIUsageLog` (sin guardar el prompt ni la respuesta).
+
+| Error | Código |
+|---|---|
+| Datos inválidos o demasiado extensos | 400 |
+| Guía de otro docente | 404 |
+| Regenerar una guía aprobada | 409 |
+| La IA no pudo generar (rechazo) | 422 |
+| Límite por minuto o diario alcanzado | 429 |
+| Respuesta de la IA inválida tras los reintentos | 502 |
+| Proveedor no configurado, ocupado o caído | 503 |
+| Tiempo de espera agotado | 504 |
+
+#### Endpoints
+
+| Método y ruta | Descripción |
+|---|---|
+| `POST /api/lesson-guides/generate` | Genera con IA y guarda un **borrador**. Con `guideId` regenera un borrador existente |
+| `POST /api/lesson-guides` | Guarda una guía escrita por el docente (sin IA) |
+| `GET /api/lesson-guides?status=&gradeId=&subjectId=&page=&limit=` | Guías propias |
+| `GET /api/lesson-guides/:id` | Detalle con el historial de generaciones |
+| `PATCH /api/lesson-guides/:id` | Edita el contenido y/o `status` (`draft`, `approved`) |
+
+**Generar**
+
+```json
+{
+  "gradeId": "6b01ed247a1e968bffde427a",
+  "subjectId": "6b01ed247a1e968bffde427b",
+  "topicId": "6b01ed247a1e968bffde427c",
+  "teachingMethodId": "6b01ed247a1e968bffde427d",
+  "durationMinutes": 45,
+  "additionalInstructions": "Usar ejemplos del mercado local."
+}
+```
+
+`topicId` es opcional (sin tema la guía lo indica en `curriculumGaps`). `durationMinutes`: 10–240.
+`additionalInstructions`: máximo 500 caracteres; no escribas datos de estudiantes.
+
+**Regenerar** un borrador (mismo grado, materia y tema; se puede cambiar metodología, duración e instrucciones):
+
+```json
+{ "guideId": "6b01ed247a1e968bffde4280", "teachingMethodId": "...", "durationMinutes": 50 }
+```
+
+**201** (resumido)
+```json
+{
+  "success": true,
+  "message": "Guía generada como borrador",
+  "data": {
+    "guide": {
+      "id": "6b01ed247a1e968bffde4280",
+      "status": "draft",
+      "origin": "ai",
+      "title": "Sumas con llevadas",
+      "durationMinutes": 45,
+      "objectives": ["Resolver sumas de dos cifras con llevadas.", "Explicar el procedimiento a un compañero."],
+      "opening": { "durationMinutes": 10, "activities": [{ "description": "Conversar sobre situaciones de compra en el mercado." }] },
+      "development": { "durationMinutes": 25, "activities": [{ "description": "Resolver sumas con material concreto en parejas." }] },
+      "closing": { "durationMinutes": 10, "activities": [{ "description": "Puesta en común y repaso." }] },
+      "materials": ["Semillas o tapitas", "Cuaderno"],
+      "shortAssessment": {
+        "instructions": "Resuelve y explica.",
+        "items": [
+          { "question": "Resuelve 27 + 15.", "objectiveIndex": 1, "expectedAnswer": "42" },
+          { "question": "Explica cómo sumaste.", "objectiveIndex": 2, "expectedAnswer": "" }
+        ]
+      },
+      "teacherRecommendations": ["Adapta los ejemplos a productos de la comunidad."],
+      "curriculumGaps": [
+        "El tema seleccionado es un dato de PRUEBA, no contenido oficial del CNB.",
+        "El tema no indica la página o el enlace del documento del CNB."
+      ],
+      "editedByTeacher": false,
+      "generations": [
+        {
+          "generatedAt": "2026-11-21T19:12:36.876Z",
+          "provider": "anthropic",
+          "model": "modelo-configurado",
+          "promptVersion": "lesson-guide-v1",
+          "attempts": 1,
+          "inputTokens": 100,
+          "outputTokens": 200,
+          "methodology": {
+            "name": "Rincones de aprendizaje",
+            "isDefault": true,
+            "sourceReference": { "title": "Metodología del Aprendizaje (...)", "section": "1.4.3 Rincones de aprendizaje", "pages": "18", "url": "https://digecur.mineduc.gob.gt/..." }
+          },
+          "curriculum": {
+            "grade": { "number": 1, "name": "Primer grado" },
+            "subject": { "code": "prueba-matematicas", "name": "[PRUEBA] Matemáticas" },
+            "topic": { "code": "tema-ejemplo-1", "name": "[PRUEBA] Tema de ejemplo 1", "isSample": true },
+            "competencies": [{ "code": "P1", "description": "[PRUEBA] Competencia de ejemplo; no proviene del CNB." }],
+            "achievementIndicators": [{ "code": "P1.1", "competencyCode": "P1", "description": "[PRUEBA] Indicador de ejemplo; no proviene del CNB." }],
+            "curriculumReference": { "document": "Ninguno: datos de prueba" },
+            "dataStatus": "sample"
+          },
+          "competenciesUsed": ["P1"],
+          "curriculumGaps": ["..."]
+        }
+      ]
+    }
+  },
+  "meta": { "disclaimer": "Esta guía es una propuesta editable para apoyar la planificación; no es una instrucción obligatoria. Revísala y adáptala a tu aula." }
+}
+```
+
+**Editar**: `PATCH` acepta `title`, `objectives`, `opening`, `development`, `closing`, `materials`,
+`shortAssessment`, `teacherRecommendations` y `status`. Se valida la guía completa resultante (por
+ejemplo, no se puede quitar un objetivo que una pregunta evalúa). Grado, materia, tema, metodología,
+`curriculumGaps` y el historial de generaciones no se editan.
+
 ### Formato de errores
 
 Todas las respuestas de error usan:
@@ -870,7 +1035,8 @@ src/
 │   ├── curriculum.js       # niveles, rango de grados, orígenes y marca [PRUEBA]
 │   ├── classroom.js        # formato de studentCode, límites y filtros de estado
 │   ├── methodology.js      # preferencias de aprendizaje, límites y alcances
-│   └── assessment.js       # tipos de evaluación, límites, umbral y nota de apoyo
+│   ├── assessment.js       # tipos de evaluación, límites, umbral y nota de apoyo
+│   └── ai.js               # proveedor, claves, tiempos y límites de consumo de IA
 ├── models/
 │   ├── teacher.model.js    # Teacher (único usuario del sistema)
 │   ├── catalog.shared.js   # procedencia (source) y toJSON comunes del catálogo
@@ -881,7 +1047,9 @@ src/
 │   ├── student.model.js    # solo studentCode, classroomId, isActive (strict: 'throw')
 │   ├── teachingMethod.model.js
 │   ├── assessment.model.js
-│   └── assessmentResult.model.js  # incluye historial de correcciones
+│   ├── assessmentResult.model.js  # incluye historial de correcciones
+│   ├── lessonGuide.model.js       # guía + historial de generaciones (metodología y referencias)
+│   └── aiUsageLog.model.js        # consumo de IA por docente
 ├── routes/
 │   ├── index.js            # registra todas las rutas bajo /api
 │   ├── health.routes.js
@@ -891,7 +1059,8 @@ src/
 │   ├── classroom.routes.js # /api/classrooms y /api/classrooms/:id/students
 │   ├── student.routes.js   # /api/students/:id
 │   ├── methodology.routes.js
-│   └── assessment.routes.js
+│   ├── assessment.routes.js
+│   └── lessonGuide.routes.js
 ├── controllers/
 │   ├── health.controller.js
 │   ├── auth.controller.js
@@ -900,7 +1069,8 @@ src/
 │   ├── classroom.controller.js
 │   ├── student.controller.js
 │   ├── methodology.controller.js
-│   └── assessment.controller.js  # también historial, progreso y rendimiento
+│   ├── assessment.controller.js  # también historial, progreso y rendimiento
+│   └── lessonGuide.controller.js
 ├── services/
 │   ├── health.service.js   # estado real de la BD (readyState + ping con timeout)
 │   ├── auth.service.js     # registro y login
@@ -912,7 +1082,13 @@ src/
 │   ├── methodology.service.js      # visibilidad, filtros y reglas de edición
 │   ├── methodologySeed.service.js  # carga repetible de predeterminadas
 │   ├── assessment.service.js       # evaluaciones, registro masivo y correcciones
-│   └── progress.service.js         # historial, progreso del estudiante y rendimiento del aula
+│   ├── progress.service.js         # historial, progreso del estudiante y rendimiento del aula
+│   ├── lessonGuide.service.js      # generación, regeneración, edición, cuotas
+│   └── ai/
+│       ├── index.js                # fábrica del proveedor (getAIProvider / setAIProvider)
+│       ├── errors.js               # errores normalizados y tiempo de espera
+│       ├── lessonGuidePrompt.js    # prompt del sistema y contexto (lista blanca, saneado)
+│       └── providers/              # anthropic, openai-compatible, mock
 ├── middlewares/
 │   ├── auth.middleware.js       # requireAuth: verifica JWT y carga req.teacher
 │   ├── rateLimit.middleware.js  # límites de login y registro
@@ -928,7 +1104,9 @@ src/
 │   ├── classroom.validator.js
 │   ├── student.validator.js      # rechaza datos personales
 │   ├── methodology.validator.js
-│   └── assessment.validator.js
+│   ├── assessment.validator.js
+│   ├── lessonGuide.validator.js  # peticiones HTTP de guías
+│   └── lessonGuideContent.js     # validación del JSON de la guía (IA y docente)
 └── utils/
     ├── AppError.js         # error controlado con código HTTP
     ├── performance.js      # cálculos puros: porcentaje, promedio, mediana, tendencia, umbral
