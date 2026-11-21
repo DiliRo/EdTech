@@ -134,6 +134,19 @@ describe('Proveedor compatible con OpenAI', () => {
         assert.deepEqual(call.body.messages, [{ role: 'system', content: 'S' }, { role: 'user', content: 'U' }])
     })
 
+    it('envía reasoning_effort solo si está configurado', async () => {
+        const ok = fakeFetchResponse(200, { choices: [{ message: { content: '{}' } }] })
+        const plain = recordingFetch(ok)
+        await createOpenAICompatibleProvider(baseConfig, { fetchImpl: plain }).generate({})
+        assert.equal(plain.calls[0].body.reasoning_effort, undefined)
+
+        const tuned = recordingFetch(ok)
+        const config = loadAIConfig({ ...process.env, AI_REASONING_EFFORT: 'low' })
+        await createOpenAICompatibleProvider({ ...baseConfig, reasoningEffort: config.reasoningEffort }, { fetchImpl: tuned }).generate({})
+        assert.equal(tuned.calls[0].body.reasoning_effort, 'low')
+        assert.equal(loadAIConfig({ AI_REASONING_EFFORT: 'turbo' }).reasoningEffort, null)
+    })
+
     it('finish_reason length → output_too_long', async () => {
         const provider = createOpenAICompatibleProvider(baseConfig, {
             fetchImpl: recordingFetch(fakeFetchResponse(200, { choices: [{ finish_reason: 'length', message: { content: '{' } }] }))

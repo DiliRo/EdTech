@@ -4,7 +4,7 @@ Backend de **edTech**, plataforma de apoyo pedagógico para docentes de primaria
 
 Stack: Node.js (≥ 22) · Express 5 · MongoDB con Mongoose · módulos ES.
 
-> Estado: base del proyecto + **autenticación y perfil de docentes** + **catálogo académico (solo lectura)** + **aulas y estudiantes** + **metodologías** + **evaluaciones y seguimiento** + **guías de clase con IA**.
+> Estado: base del proyecto + **autenticación y perfil de docentes** + **catálogo académico (solo lectura)** + **aulas y estudiantes** + **metodologías** + **evaluaciones y seguimiento** + **guías de clase con IA** + **seguimiento de estrategias pedagógicas**.
 > Solo los docentes tienen cuenta; los estudiantes no tienen usuario, correo ni contraseña.
 
 ## Instalación
@@ -69,6 +69,8 @@ curl http://localhost:3000/api/health
 | `AI_API_KEY`, `AI_MODEL` | Con proveedor real | — | Clave y modelo del proveedor |
 | `AI_BASE_URL` | Con `openai-compatible` | — | URL base, p. ej. `https://api.openai.com/v1` |
 | `AI_ANTHROPIC_VERSION` | No | `2023-06-01` | Cabecera `anthropic-version` |
+| `AI_REASONING_EFFORT` | No | — | Solo `openai-compatible`: `none`, `minimal`, `low`, `medium` o `high` |
+| `PEDAGOGICAL_CLASSIFICATION` | No | `vark` | Clasificación por defecto del seguimiento: `vark` o `honey-alonso` |
 | `AI_TIMEOUT_MS` | No | `30000` | Tiempo máximo de espera por llamada |
 | `AI_MAX_OUTPUT_TOKENS` | No | `2500` | Tokens máximos de respuesta |
 | `AI_MAX_INPUT_CHARS` / `AI_MAX_OUTPUT_CHARS` | No | `12000` / `20000` | Longitud máxima del prompt y de la respuesta |
@@ -863,6 +865,32 @@ El servicio está desacoplado del proveedor (`src/services/ai/`). Todos implemen
 
 Si falta la clave o el modelo de un proveedor real, la generación responde 503 sin mostrar detalles.
 
+#### Usar un proveedor gratuito
+
+Las tres opciones usan `AI_PROVIDER=openai-compatible`. Elige el modelo en la lista de modelos del
+proveedor (los nombres cambian con frecuencia) y colócalo en `AI_MODEL`.
+
+| Opción | Costo | `AI_BASE_URL` | Clave |
+|---|---|---|---|
+| **Google Gemini** | Nivel gratuito con límites | `https://generativelanguage.googleapis.com/v1beta/openai` | Google AI Studio |
+| **Groq** | Plan gratuito con límites | `https://api.groq.com/openai/v1` | console.groq.com |
+| **Ollama** (local) | Gratis, sin límites de uso; corre en tu computadora | `http://localhost:11434/v1` | Cualquier texto, p. ej. `ollama` |
+
+Ejemplo con Gemini:
+
+```env
+AI_PROVIDER=openai-compatible
+AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+AI_API_KEY=tu-clave-de-google-ai-studio
+AI_MODEL=el-modelo-flash-que-elijas
+AI_REASONING_EFFORT=low
+```
+
+Con Gemini conviene `AI_REASONING_EFFORT=low`: sus modelos recientes "piensan" antes de responder y
+ese razonamiento consume tokens de `AI_MAX_OUTPUT_TOKENS`. Con Ollama el modelo debe caber en la
+memoria de tu equipo; los modelos pequeños pueden fallar más la validación del JSON (el backend
+reintenta y, si no lo logra, responde 502 sin guardar nada).
+
 #### Seguridad y límites
 
 - **Sin datos de estudiantes**: el contexto se arma con una lista blanca (grado, materia, tema,
@@ -999,6 +1027,148 @@ Si falta la clave o el modelo de un proveedor real, la generación responde 503 
 ejemplo, no se puede quitar un objetivo que una pregunta evalúa). Grado, materia, tema, metodología,
 `curriculumGaps` y el historial de generaciones no se editan.
 
+### Seguimiento de estrategias pedagógicas
+
+Permite al docente probar enfoques de enseñanza durante **cuatro períodos mensuales** y observar
+el desempeño del grupo con estadísticas calculadas por el backend. La clasificación pedagógica y
+sus reglas están documentadas en [`docs/clasificaciones-pedagogicas.md`](docs/clasificaciones-pedagogicas.md).
+
+Reglas:
+
+- **Una sola clasificación por seguimiento** (`vark` o `honey-alonso`), fijada al crear. La API
+  rechaza categorías de otra clasificación: **VARK y Honey-Alonso nunca se mezclan**.
+- La categoría describe **el énfasis de la enseñanza planificada**, no estilos de aprendizaje de los
+  estudiantes. Los resultados no identifican estilos fijos ni predominantes.
+- Las estadísticas son **descriptivas**: un promedio mayor no prueba que una metodología sea
+  superior. El reporte calcula **advertencias de comparabilidad** (temas, dificultad, cantidad y tipo
+  de evaluaciones, materias, participación, categorías faltantes).
+- **Datos insuficientes** (por período: menos de 2 evaluaciones, menos de 10 calificaciones o
+  participación menor al 60 %) se indican explícitamente; sin al menos dos períodos suficientes no se
+  compara ni se informa tendencia.
+- La IA recibe **solo estadísticas agregadas** (nunca códigos, notas individuales ni el texto de las
+  observaciones). Su respuesta se rechaza si afirma causalidad o estilos fijos, si recomienda
+  metodologías que no están en el catálogo del docente o si omite la nota de datos insuficientes.
+- Las recomendaciones son **orientativas**: el docente marca cada una como `accepted` o `discarded`.
+- Solo el docente dueño accede (otros reciben 404).
+
+| Método y ruta | Descripción |
+|---|---|
+| `POST /api/teaching-experiments` | Crea el seguimiento con sus 4 períodos mensuales |
+| `GET /api/teaching-experiments?classroomId=&status=` | Seguimientos propios |
+| `GET /api/teaching-experiments/:id` | Detalle (incluye `classificationInfo` con fuente y categorías) |
+| `PATCH /api/teaching-experiments/:id` | Título, estado y períodos (categoría, metodologías, evaluaciones, condiciones) |
+| `POST /api/teaching-experiments/:id/periods/:index/observations` | Agrega una observación docente al período |
+| `GET /api/teaching-experiments/:id/statistics` | Estadísticas por mes y reporte comparativo (no se guarda) |
+| `POST /api/teaching-experiments/:id/report` | Genera y **guarda** un reporte (con o sin IA: `{ "useAI": false }`) |
+| `GET /api/teaching-experiments/:id/reports` | Reportes guardados |
+| `GET /api/teaching-experiments/:id/reports/:reportId` | Un reporte |
+| `PATCH /api/teaching-experiments/:id/reports/:reportId` | Notas del docente y decisión sobre cada recomendación |
+
+`status`: `planned`, `active`, `completed` o `cancelled`. Un seguimiento completado no edita períodos
+hasta reabrirlo (`"status": "active"`); uno cancelado no se modifica.
+
+#### `POST /api/teaching-experiments`
+
+```json
+{
+  "classroomId": "6b01eff7e5dd213613775860",
+  "title": "Estrategias de lectura",
+  "startDate": "2026-03-01",
+  "classification": "vark",
+  "periods": [
+    {
+      "index": 1,
+      "category": "visual",
+      "teachingMethodIds": ["6b01eff7e5dd21361377585d"],
+      "assessmentIds": ["6b01eff7e5dd213613775866", "6b01eff7e5dd21361377586a"],
+      "conditions": { "difficulty": "media", "topicsCovered": "Comprensión lectora", "attendanceNotes": "", "externalFactors": "" }
+    }
+  ]
+}
+```
+
+Los períodos se calculan desde `startDate` (1–31 mar, 1–30 abr, 1–31 may, 1–30 jun). Cada evaluación
+debe ser del docente, de la misma aula, con fecha dentro del período y estar en un solo período.
+`difficulty`: `baja`, `media` o `alta`.
+
+#### Estadísticas de un período (`GET .../statistics`, resumido)
+
+```json
+{
+  "index": 1,
+  "category": { "code": "visual", "label": "Visual" },
+  "methods": [{ "id": "6b01eff7e5dd21361377585d", "name": "Mundo letrado", "isDefault": true }],
+  "assessmentsCount": 2,
+  "resultsCount": 6,
+  "averagePercentage": 70,
+  "medianPercentage": 70,
+  "minPercentage": 60,
+  "maxPercentage": 80,
+  "distribution": [
+    { "range": "0-39", "count": 0, "percentage": 0 },
+    { "range": "40-59", "count": 0, "percentage": 0 },
+    { "range": "60-79", "count": 5, "percentage": 83.33 },
+    { "range": "80-100", "count": 1, "percentage": 16.67 }
+  ],
+  "participation": { "studentsWithResults": 3, "cohortSize": 3, "rate": 100 },
+  "context": { "subjects": [{ "id": "...", "name": "[PRUEBA] Mate" }], "topicsCount": 0, "assessmentTypes": { "formativa": 2 }, "difficulty": "media" },
+  "perAssessment": [{ "assessmentId": "...", "title": "Eval 2026-03-05", "resultsCount": 3, "averagePercentage": 65, "completionRate": 100, "...": "..." }],
+  "dataSufficiency": { "sufficient": false, "reasons": ["Tiene 6 calificación(es) registradas; se necesitan al menos 10."] },
+  "changes": {
+    "fromPrevious": null,
+    "fromFirst": null
+  }
+}
+```
+
+En los períodos siguientes, `changes.fromPrevious` compara con el período anterior **que tenga
+datos**: `{ "comparedWithPeriod": 1, "averageDelta": 10, "participationDelta": 0, "assessmentsDelta": -1 }`.
+
+El reporte comparativo agrega:
+
+```json
+{
+  "overall": { "assessmentsCount": 3, "resultsCount": 9, "periodsWithData": [1, 2], "sufficientPeriods": [], "canCompare": false, "trendOfMonthlyAverages": null },
+  "dataSufficiency": { "sufficient": false, "message": "Datos insuficientes para comparar los períodos." },
+  "comparabilityWarnings": [
+    { "code": "insufficient_data", "message": "Los períodos 1, 2, 3, 4 tienen datos insuficientes; sus resultados no deben compararse.", "periods": [1, 2, 3, 4] },
+    { "code": "topics", "message": "Cada período trabajó temas diferentes, con contenidos y exigencias propios.", "periods": [] },
+    { "code": "difficulty_unknown", "message": "No se registró la dificultad de los temas en algunos períodos.", "periods": [2] }
+  ],
+  "disclaimer": "Estadísticas descriptivas para apoyar la reflexión docente. ..."
+}
+```
+
+#### Reporte guardado (`POST .../report`)
+
+Guarda una copia de las estadísticas y, si se usó IA, su interpretación validada:
+
+```json
+{
+  "aiInterpretation": {
+    "summary": "...",
+    "periodInsights": [{ "period": 1, "observation": "..." }],
+    "limitations": ["..."],
+    "nextSteps": ["..."],
+    "dataSufficiencyNote": "..."
+  },
+  "recommendations": [
+    { "teachingMethodId": "...", "methodName": "Mundo letrado", "rationale": "...", "teacherDecision": "pending", "decidedAt": null }
+  ],
+  "ai": { "provider": "mock", "model": "mock", "promptVersion": "experiment-report-v1", "attempts": 1 },
+  "aiSkippedReason": null,
+  "teacherNotes": ""
+}
+```
+
+Si no hay calificaciones, no se llama a la IA y `aiSkippedReason` lo explica.
+
+Decidir sobre una recomendación:
+
+```json
+{ "teacherNotes": "La aplicaré en julio.", "recommendations": [{ "teachingMethodId": "...", "teacherDecision": "accepted" }] }
+```
+
 ### Formato de errores
 
 Todas las respuestas de error usan:
@@ -1036,7 +1206,8 @@ src/
 │   ├── classroom.js        # formato de studentCode, límites y filtros de estado
 │   ├── methodology.js      # preferencias de aprendizaje, límites y alcances
 │   ├── assessment.js       # tipos de evaluación, límites, umbral y nota de apoyo
-│   └── ai.js               # proveedor, claves, tiempos y límites de consumo de IA
+│   ├── ai.js               # proveedor, claves, tiempos y límites de consumo de IA
+│   └── pedagogy.js         # clasificaciones VARK / Honey-Alonso, mínimos de datos, rangos
 ├── models/
 │   ├── teacher.model.js    # Teacher (único usuario del sistema)
 │   ├── catalog.shared.js   # procedencia (source) y toJSON comunes del catálogo
@@ -1049,7 +1220,9 @@ src/
 │   ├── assessment.model.js
 │   ├── assessmentResult.model.js  # incluye historial de correcciones
 │   ├── lessonGuide.model.js       # guía + historial de generaciones (metodología y referencias)
-│   └── aiUsageLog.model.js        # consumo de IA por docente
+│   ├── aiUsageLog.model.js        # consumo de IA por docente
+│   ├── teachingExperiment.model.js  # seguimiento con 4 períodos, observaciones y condiciones
+│   └── experimentReport.model.js    # reportes guardados y decisiones del docente
 ├── routes/
 │   ├── index.js            # registra todas las rutas bajo /api
 │   ├── health.routes.js
@@ -1060,7 +1233,8 @@ src/
 │   ├── student.routes.js   # /api/students/:id
 │   ├── methodology.routes.js
 │   ├── assessment.routes.js
-│   └── lessonGuide.routes.js
+│   ├── lessonGuide.routes.js
+│   └── teachingExperiment.routes.js
 ├── controllers/
 │   ├── health.controller.js
 │   ├── auth.controller.js
@@ -1070,7 +1244,8 @@ src/
 │   ├── student.controller.js
 │   ├── methodology.controller.js
 │   ├── assessment.controller.js  # también historial, progreso y rendimiento
-│   └── lessonGuide.controller.js
+│   ├── lessonGuide.controller.js
+│   └── teachingExperiment.controller.js
 ├── services/
 │   ├── health.service.js   # estado real de la BD (readyState + ping con timeout)
 │   ├── auth.service.js     # registro y login
@@ -1084,10 +1259,14 @@ src/
 │   ├── assessment.service.js       # evaluaciones, registro masivo y correcciones
 │   ├── progress.service.js         # historial, progreso del estudiante y rendimiento del aula
 │   ├── lessonGuide.service.js      # generación, regeneración, edición, cuotas
+│   ├── teachingExperiment.service.js  # períodos, asociaciones, observaciones y estadísticas
+│   ├── experimentReport.service.js    # reportes con interpretación de IA
 │   └── ai/
 │       ├── index.js                # fábrica del proveedor (getAIProvider / setAIProvider)
 │       ├── errors.js               # errores normalizados y tiempo de espera
+│       ├── runStructured.js        # flujo común: proveedor, validación, reintentos, cuota y registro
 │       ├── lessonGuidePrompt.js    # prompt del sistema y contexto (lista blanca, saneado)
+│       ├── experimentReportPrompt.js  # prompt y contexto agregado del reporte
 │       └── providers/              # anthropic, openai-compatible, mock
 ├── middlewares/
 │   ├── auth.middleware.js       # requireAuth: verifica JWT y carga req.teacher
@@ -1106,15 +1285,20 @@ src/
 │   ├── methodology.validator.js
 │   ├── assessment.validator.js
 │   ├── lessonGuide.validator.js  # peticiones HTTP de guías
-│   └── lessonGuideContent.js     # validación del JSON de la guía (IA y docente)
+│   ├── lessonGuideContent.js     # validación del JSON de la guía (IA y docente)
+│   ├── teachingExperiment.validator.js
+│   └── experimentReportContent.js  # validación de la interpretación de la IA
 └── utils/
     ├── AppError.js         # error controlado con código HTTP
     ├── performance.js      # cálculos puros: porcentaje, promedio, mediana, tendencia, umbral
+    ├── experimentStats.js  # cálculos puros del seguimiento: distribución, participación, cambios, comparabilidad
     ├── password.js         # bcrypt (hash y comparación)
     └── jwt.js              # firma y verificación de tokens
 scripts/
 ├── importCatalog.js        # CLI de importación del catálogo
 └── seedMethodologies.js    # CLI de carga de metodologías predeterminadas
+docs/
+└── clasificaciones-pedagogicas.md  # qué significan (y qué no) las categorías del seguimiento
 data/
 ├── catalog/
 │   ├── README.md           # formato y reglas de los catálogos

@@ -54,3 +54,16 @@ export const fakeFetchResponse = (status, body) => ({
         return body
     }
 })
+
+export const REPORT_TEST_METHOD_ID = '6b01e8953a62794870353e79'
+
+/** Interpretación válida de un reporte de seguimiento (lenguaje descriptivo, sin causalidad). */
+export const validInterpretation = (overrides = {}) => ({
+    summary: 'En los cuatro meses se observó un promedio estable, con temas de dificultad distinta.',
+    periodInsights: [{ period: 1, observation: 'Se registraron dos evaluaciones con participación alta.' }],
+    limitations: ['Los temas variaron entre meses, por lo que los promedios no son directamente comparables.'],
+    recommendations: [{ teachingMethodId: REPORT_TEST_METHOD_ID, rationale: 'Podría complementar el trabajo en equipo observado en el tercer mes.' }],
+    nextSteps: ['Registrar la dificultad de los temas.'],
+    dataSufficiencyNote: 'Todos los períodos cumplen los mínimos.',
+    ...overrides
+})

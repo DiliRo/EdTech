@@ -27,6 +27,8 @@ export const loadAIConfig = (source = process.env) => ({
     baseUrl: (source.AI_BASE_URL || '').replace(/\/+$/, ''),
     anthropicVersion: source.AI_ANTHROPIC_VERSION || '2023-06-01',
     temperature: num(source.AI_TEMPERATURE, 0.4, 0, 1),
+    // Solo openai-compatible: se envía como `reasoning_effort` si se define (p. ej. "low" en Gemini)
+    reasoningEffort: ['none', 'minimal', 'low', 'medium', 'high'].includes(source.AI_REASONING_EFFORT) ? source.AI_REASONING_EFFORT : null,
 
     // Límites de tiempo y consumo
     timeoutMs: int(source.AI_TIMEOUT_MS, 30000, 1000, 120000),
