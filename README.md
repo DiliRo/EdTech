@@ -4,7 +4,7 @@ Backend de **edTech**, plataforma de apoyo pedagógico para docentes de primaria
 
 Stack: Node.js (≥ 22) · Express 5 · MongoDB con Mongoose · módulos ES.
 
-> Estado: base del proyecto + **autenticación y perfil de docentes**.
+> Estado: base del proyecto + **autenticación y perfil de docentes** + **catálogo académico (solo lectura)**.
 > Solo los docentes tienen cuenta; los estudiantes no tienen usuario, correo ni contraseña.
 
 ## Instalación
@@ -30,6 +30,12 @@ Edita `.env` y completa:
 ```bash
 npm run dev     # desarrollo con nodemon (reinicia al guardar)
 npm start       # producción
+```
+
+Cargar el catálogo de **prueba** (grados 1–6 y contenido de ejemplo marcado `[PRUEBA]`):
+
+```bash
+npm run catalog:seed-sample
 ```
 
 Comprobar que funciona:
@@ -243,6 +249,130 @@ El correo y la contraseña no se pueden cambiar desde aquí.
 }
 ```
 
+### Catálogo académico (solo lectura)
+
+Grados, materias y temas del nivel primario. **Todas las rutas requieren sesión** y son solo de
+lectura: los docentes no pueden crear, editar ni borrar datos del catálogo. Los datos se cargan con
+el importador (ver [Importar catálogos](#importar-catálogos)).
+
+Cada materia y tema incluye:
+- `isSample`: `true` si es dato de **prueba** (no oficial del CNB).
+- `source`: procedencia (`cnb` o `sample`, documento, versión, fecha de importación).
+
+Las listas incluyen `meta.containsSampleData` para que el frontend muestre un aviso.
+
+#### `GET /api/grades`
+
+Filtros: `level` (`primaria`). Orden: nivel y número.
+
+```json
+{
+  "success": true,
+  "message": "Grados",
+  "data": {
+    "grades": [
+      { "number": 1, "name": "Primer grado", "level": "primaria", "createdAt": "...", "updatedAt": "...", "id": "6b01e4a6cd89694ca6013148" }
+    ]
+  }
+}
+```
+
+#### `GET /api/subjects`
+
+Filtros: `grade` (id del grado). Orden: nombre.
+
+```json
+{
+  "success": true,
+  "message": "Materias",
+  "data": {
+    "subjects": [
+      {
+        "code": "prueba-matematicas",
+        "name": "[PRUEBA] Matemáticas",
+        "description": "[PRUEBA] Materia de ejemplo para desarrollo. No es contenido oficial del CNB.",
+        "grades": [{ "number": 1, "name": "Primer grado", "level": "primaria", "id": "6b01e4a6cd89694ca6013148" }],
+        "isSample": true,
+        "source": { "type": "sample", "importedAt": "2026-11-21T18:00:00.000Z" },
+        "createdAt": "...",
+        "updatedAt": "...",
+        "id": "6b01e4a6cd89694ca6013149"
+      }
+    ]
+  },
+  "meta": { "containsSampleData": true }
+}
+```
+
+#### `GET /api/topics`
+
+Filtros: `subject` (id), `grade` (id), `page` (≥ 1, por defecto 1), `limit` (1–100, por defecto 50).
+
+```json
+{
+  "success": true,
+  "message": "Temas",
+  "data": {
+    "topics": [
+      {
+        "code": "tema-ejemplo-1",
+        "name": "[PRUEBA] Tema de ejemplo 1",
+        "description": "[PRUEBA] Texto de relleno para probar la interfaz.",
+        "grade": { "number": 1, "name": "Primer grado", "level": "primaria", "id": "6b01e4a6cd89694ca6013148" },
+        "subject": { "code": "prueba-matematicas", "name": "[PRUEBA] Matemáticas", "id": "6b01e4a6cd89694ca6013149" },
+        "competencies": [
+          { "code": "P1", "description": "[PRUEBA] Competencia de ejemplo; no proviene del CNB." }
+        ],
+        "achievementIndicators": [
+          { "code": "P1.1", "competencyCode": "P1", "description": "[PRUEBA] Indicador de ejemplo; no proviene del CNB." }
+        ],
+        "curriculumReference": { "document": "Ninguno: datos de prueba" },
+        "isSample": true,
+        "source": { "type": "sample", "importedAt": "2026-11-21T18:00:00.000Z" },
+        "createdAt": "...",
+        "updatedAt": "...",
+        "id": "6b01e4a6cd89694ca601314a"
+      }
+    ]
+  },
+  "meta": { "page": 1, "limit": 50, "total": 1, "totalPages": 1, "containsSampleData": true }
+}
+```
+
+#### `GET /api/topics/:id`
+
+Igual que un elemento de la lista, dentro de `data.topic`; la materia incluye también su `description`.
+`meta.containsSampleData` indica si el tema es de prueba.
+
+| Caso                                       | Código |
+|--------------------------------------------|--------|
+| Id con formato inválido                    | 400    |
+| Parámetro desconocido o fuera de rango     | 400    |
+| Tema inexistente                           | 404    |
+| POST / PUT / PATCH / DELETE en el catálogo | 404    |
+
+### Importar catálogos
+
+```bash
+npm run catalog:import -- <archivo.json> --dry-run   # valida sin escribir
+npm run catalog:import -- <archivo.json>             # importa (upsert: no duplica al repetir)
+```
+
+El formato y las reglas están en [`data/catalog/README.md`](data/catalog/README.md). En resumen:
+
+- `metadata.source: "cnb"` exige documento, versión y página o URL de cada tema.
+- `metadata.source: "sample"` exige que todo el contenido empiece con `[PRUEBA]`.
+- Un catálogo de prueba nunca reemplaza datos oficiales. Si hay cualquier error, no se escribe nada.
+
+**No hay todavía datos oficiales del CNB en el repositorio.** Solo existe `sample.catalog.json`,
+cuyo contenido es inventado y está marcado como prueba.
+
+### Contexto para la IA (preparado, sin endpoint)
+
+`topic.toAIContext()` (con `grade` y `subject` poblados) devuelve un resumen compacto del tema:
+grado, materia, competencias, indicadores, referencia curricular y `dataStatus`
+(`official` o `sample`, con una advertencia si es de prueba). Lo usará el módulo de generación de guías.
+
 ### Formato de errores
 
 Todas las respuestas de error usan:
@@ -275,22 +405,31 @@ src/
 ├── config/
 │   ├── env.js              # lee y valida variables de entorno
 │   ├── db.js               # conexión a MongoDB con Mongoose
-│   └── languages.js        # idiomas soportados (fuente única)
+│   ├── languages.js        # idiomas soportados (fuente única)
+│   └── curriculum.js       # niveles, rango de grados, orígenes y marca [PRUEBA]
 ├── models/
-│   └── teacher.model.js    # Teacher (único usuario del sistema)
+│   ├── teacher.model.js    # Teacher (único usuario del sistema)
+│   ├── catalog.shared.js   # procedencia (source) y toJSON comunes del catálogo
+│   ├── grade.model.js
+│   ├── subject.model.js
+│   └── topic.model.js      # incluye toAIContext()
 ├── routes/
 │   ├── index.js            # registra todas las rutas bajo /api
 │   ├── health.routes.js
 │   ├── auth.routes.js      # /api/auth/register, /login, /me
-│   └── teacher.routes.js   # /api/teachers/me
+│   ├── teacher.routes.js   # /api/teachers/me
+│   └── catalog.routes.js   # /api/grades, /api/subjects, /api/topics (solo GET)
 ├── controllers/
 │   ├── health.controller.js
 │   ├── auth.controller.js
-│   └── teacher.controller.js
+│   ├── teacher.controller.js
+│   └── catalog.controller.js
 ├── services/
 │   ├── health.service.js   # estado real de la BD (readyState + ping con timeout)
 │   ├── auth.service.js     # registro y login
-│   └── teacher.service.js  # actualización del perfil propio
+│   ├── teacher.service.js  # actualización del perfil propio
+│   ├── catalog.service.js  # consultas del catálogo
+│   └── catalogImport.service.js  # validación de referencias e importación
 ├── middlewares/
 │   ├── auth.middleware.js       # requireAuth: verifica JWT y carga req.teacher
 │   ├── rateLimit.middleware.js  # límites de login y registro
@@ -300,11 +439,18 @@ src/
 ├── validators/
 │   ├── teacher.rules.js    # reglas reutilizables (nombre, correo, contraseña, idioma)
 │   ├── auth.validator.js
-│   └── teacher.validator.js
+│   ├── teacher.validator.js
+│   ├── catalog.validator.js      # parámetros de consulta del catálogo
+│   └── catalogFile.validator.js  # estructura de los archivos JSON del catálogo
 └── utils/
     ├── AppError.js         # error controlado con código HTTP
     ├── password.js         # bcrypt (hash y comparación)
     └── jwt.js              # firma y verificación de tokens
+scripts/
+└── importCatalog.js        # CLI de importación del catálogo
+data/catalog/
+├── README.md               # formato y reglas de los catálogos
+└── sample.catalog.json     # datos de PRUEBA (no oficiales)
 tests/
 ├── setup-env.js            # entorno aislado para pruebas
 ├── helpers/                # almacén falso de Teacher y datos de prueba
