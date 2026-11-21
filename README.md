@@ -4,7 +4,7 @@ Backend de **edTech**, plataforma de apoyo pedagógico para docentes de primaria
 
 Stack: Node.js (≥ 22) · Express 5 · MongoDB con Mongoose · módulos ES.
 
-> Estado: base del proyecto + **autenticación y perfil de docentes** + **catálogo académico (solo lectura)**.
+> Estado: base del proyecto + **autenticación y perfil de docentes** + **catálogo académico (solo lectura)** + **aulas y estudiantes**.
 > Solo los docentes tienen cuenta; los estudiantes no tienen usuario, correo ni contraseña.
 
 ## Instalación
@@ -373,6 +373,136 @@ cuyo contenido es inventado y está marcado como prueba.
 grado, materia, competencias, indicadores, referencia curricular y `dataStatus`
 (`official` o `sample`, con una advertencia si es de prueba). Lo usará el módulo de generación de guías.
 
+### Aulas y estudiantes
+
+> **Los estudiantes son registros académicos, no usuarios.** No tienen nombre, correo, contraseña
+> ni sesión: solo un **código** que el docente asigna (`A01`, `MAT-03`, `EST-12`).
+
+Reglas:
+
+- Todas las rutas requieren sesión. Antes de cualquier operación se comprueba que el aula sea del
+  docente; si es de otro, la respuesta es **404**, idéntica a la de un recurso inexistente.
+- El `_id` del estudiante es **permanente**. Las evaluaciones y estadísticas se relacionarán con
+  él, nunca con el código. Por eso el código se puede editar sin perder historial.
+- `studentCode` se guarda en MAYÚSCULAS (`a01` = `A01`); letras sin tilde, números, `-` y `_`, máximo 20.
+- El código es **único dentro del aula** (validación + índice único `{ classroomId, studentCode }`),
+  también frente a estudiantes archivados. Puede repetirse en otras aulas.
+- `DELETE` **archiva** (`isActive: false`); nunca borra. `PATCH` con `"isActive": true` restaura.
+- Archivar un aula no archiva a sus estudiantes. En un aula archivada no se agregan estudiantes ni se
+  edita nada sin restaurarla.
+- Cualquier dato personal (`name`, `firstName`, `email`, `password`, `birthDate`, …) se rechaza con 400.
+
+| Método y ruta | Descripción |
+|---|---|
+| `GET /api/classrooms?status=&schoolYear=` | Aulas del docente. `status`: `active` (por defecto), `archived`, `all` |
+| `POST /api/classrooms` | Crea un aula |
+| `GET /api/classrooms/:id` | Detalle con `grade`, `subjects` y `activeStudentCount` |
+| `PATCH /api/classrooms/:id` | Edita `name`, `gradeId`, `section`, `schoolYear`, `subjectIds`, `isActive` |
+| `DELETE /api/classrooms/:id` | Archiva |
+| `GET /api/classrooms/:id/students?status=` | Estudiantes del aula, ordenados por código |
+| `POST /api/classrooms/:id/students` | Registra un estudiante con `studentCode` |
+| `PATCH /api/students/:id` | Edita `studentCode` y/o `isActive` |
+| `DELETE /api/students/:id` | Archiva |
+
+#### `POST /api/classrooms`
+
+```json
+{
+  "name": "Primero A matutina",
+  "gradeId": "6b01e6a7f94451de085051be",
+  "section": "A",
+  "schoolYear": 2026,
+  "subjectIds": ["6b01e6a7f94451de085051c0"]
+}
+```
+
+`gradeId` debe existir y cada materia debe impartirse en ese grado. `teacherId` sale del token;
+`isActive` no se acepta al crear.
+
+**201**
+```json
+{
+  "success": true,
+  "message": "Aula creada",
+  "data": {
+    "classroom": {
+      "name": "Primero A matutina",
+      "gradeId": "6b01e6a7f94451de085051be",
+      "section": "A",
+      "schoolYear": 2026,
+      "teacherId": "6b01e6a8f94451de085051c2",
+      "subjectIds": ["6b01e6a7f94451de085051c0"],
+      "isActive": true,
+      "createdAt": "2026-11-21T18:44:56.044Z",
+      "updatedAt": "2026-11-21T18:44:56.044Z",
+      "grade": { "number": 1, "name": "Primer grado", "level": "primaria", "id": "6b01e6a7f94451de085051be" },
+      "subjects": [{ "code": "prueba-matematicas", "name": "[PRUEBA] Matemáticas", "isSample": true, "id": "6b01e6a7f94451de085051c0" }],
+      "activeStudentCount": 0,
+      "id": "6b01e6a8f94451de085051c4"
+    }
+  }
+}
+```
+
+#### `POST /api/classrooms/:id/students`
+
+```json
+{ "studentCode": "a01" }
+```
+
+**201**
+```json
+{
+  "success": true,
+  "message": "Estudiante registrado",
+  "data": {
+    "student": {
+      "studentCode": "A01",
+      "classroomId": "6b01e6a8f94451de085051c4",
+      "isActive": true,
+      "createdAt": "2026-11-21T18:44:56.051Z",
+      "updatedAt": "2026-11-21T18:44:56.051Z",
+      "id": "6b01e6a8f94451de085051c5"
+    }
+  }
+}
+```
+
+**409** (código repetido en el aula)
+```json
+{
+  "success": false,
+  "message": "Ya existe un estudiante con el código \"A01\" en esta aula",
+  "errors": [{ "field": "studentCode", "message": "El código ya está en uso en esta aula (también cuenta a los archivados)" }]
+}
+```
+
+**400** (dato personal)
+```json
+{
+  "success": false,
+  "message": "Los estudiantes no son usuarios: regístralos solo con un código (studentCode), sin datos personales.",
+  "errors": [{ "field": "firstName", "message": "Dato personal no permitido" }]
+}
+```
+
+#### `PATCH /api/students/:id`
+
+```json
+{ "studentCode": "EST-01" }
+```
+
+**200**: mismo `id` y `createdAt`; cambia `studentCode` y `updatedAt`. `DELETE` devuelve el mismo
+formato con `"isActive": false` y `"message": "Estudiante archivado"`.
+
+| Caso | Código |
+|---|---|
+| Aula o estudiante de otro docente, o inexistente | 404 |
+| Código repetido en el aula | 409 |
+| Agregar estudiantes o editar un aula archivada | 409 |
+| Reactivar un estudiante de un aula archivada | 409 |
+| Dato personal o campo no permitido | 400 |
+
 ### Formato de errores
 
 Todas las respuestas de error usan:
@@ -406,30 +536,39 @@ src/
 │   ├── env.js              # lee y valida variables de entorno
 │   ├── db.js               # conexión a MongoDB con Mongoose
 │   ├── languages.js        # idiomas soportados (fuente única)
-│   └── curriculum.js       # niveles, rango de grados, orígenes y marca [PRUEBA]
+│   ├── curriculum.js       # niveles, rango de grados, orígenes y marca [PRUEBA]
+│   └── classroom.js        # formato de studentCode, límites y filtros de estado
 ├── models/
 │   ├── teacher.model.js    # Teacher (único usuario del sistema)
 │   ├── catalog.shared.js   # procedencia (source) y toJSON comunes del catálogo
 │   ├── grade.model.js
 │   ├── subject.model.js
-│   └── topic.model.js      # incluye toAIContext()
+│   ├── topic.model.js      # incluye toAIContext()
+│   ├── classroom.model.js
+│   └── student.model.js    # solo studentCode, classroomId, isActive (strict: 'throw')
 ├── routes/
 │   ├── index.js            # registra todas las rutas bajo /api
 │   ├── health.routes.js
 │   ├── auth.routes.js      # /api/auth/register, /login, /me
 │   ├── teacher.routes.js   # /api/teachers/me
-│   └── catalog.routes.js   # /api/grades, /api/subjects, /api/topics (solo GET)
+│   ├── catalog.routes.js   # /api/grades, /api/subjects, /api/topics (solo GET)
+│   ├── classroom.routes.js # /api/classrooms y /api/classrooms/:id/students
+│   └── student.routes.js   # /api/students/:id
 ├── controllers/
 │   ├── health.controller.js
 │   ├── auth.controller.js
 │   ├── teacher.controller.js
-│   └── catalog.controller.js
+│   ├── catalog.controller.js
+│   ├── classroom.controller.js
+│   └── student.controller.js
 ├── services/
 │   ├── health.service.js   # estado real de la BD (readyState + ping con timeout)
 │   ├── auth.service.js     # registro y login
 │   ├── teacher.service.js  # actualización del perfil propio
 │   ├── catalog.service.js  # consultas del catálogo
-│   └── catalogImport.service.js  # validación de referencias e importación
+│   ├── catalogImport.service.js  # validación de referencias e importación
+│   ├── classroom.service.js      # findOwnedClassroom: comprobación de propiedad
+│   └── student.service.js
 ├── middlewares/
 │   ├── auth.middleware.js       # requireAuth: verifica JWT y carga req.teacher
 │   ├── rateLimit.middleware.js  # límites de login y registro
@@ -441,7 +580,9 @@ src/
 │   ├── auth.validator.js
 │   ├── teacher.validator.js
 │   ├── catalog.validator.js      # parámetros de consulta del catálogo
-│   └── catalogFile.validator.js  # estructura de los archivos JSON del catálogo
+│   ├── catalogFile.validator.js  # estructura de los archivos JSON del catálogo
+│   ├── classroom.validator.js
+│   └── student.validator.js      # rechaza datos personales
 └── utils/
     ├── AppError.js         # error controlado con código HTTP
     ├── password.js         # bcrypt (hash y comparación)
@@ -453,7 +594,7 @@ data/catalog/
 └── sample.catalog.json     # datos de PRUEBA (no oficiales)
 tests/
 ├── setup-env.js            # entorno aislado para pruebas
-├── helpers/                # almacén falso de Teacher y datos de prueba
+├── helpers/                # modelos falsos en memoria y datos de prueba
 ├── unit/                   # no necesitan MongoDB
 └── integration/            # MongoDB real en memoria (mongodb-memory-server)
 ```
