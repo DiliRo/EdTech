@@ -3,24 +3,39 @@ import { Types } from 'mongoose'
 
 const toKey = (value) => (value === null || value === undefined ? value : String(value))
 
-/** Compara un valor guardado con una condición de filtro (igualdad, $in, $ne, arrays). */
+/** Lee un campo, admitiendo rutas con punto (p. ej. "estimatedDuration.minMinutes"). */
+const getPath = (row, path) => path.split('.').reduce((value, key) => (value == null ? undefined : value[key]), row)
+
+/** Compara un valor guardado con una condición de filtro (igualdad, $in, $ne, $size, $lte, $gte, arrays). */
 const matchesValue = (stored, condition) => {
     const isOperator =
         condition && typeof condition === 'object' && !(condition instanceof Types.ObjectId) && !Array.isArray(condition)
 
     if (isOperator) {
-        if ('$in' in condition) {
-            const wanted = condition.$in.map(toKey)
-            return Array.isArray(stored) ? stored.some((v) => wanted.includes(toKey(v))) : wanted.includes(toKey(stored))
-        }
-        if ('$ne' in condition) return toKey(stored) !== toKey(condition.$ne)
-        throw new Error(`Operador no soportado por el fake: ${Object.keys(condition)}`)
+        return Object.entries(condition).every(([op, arg]) => {
+            switch (op) {
+                case '$in': {
+                    const wanted = arg.map(toKey)
+                    return Array.isArray(stored) ? stored.some((v) => wanted.includes(toKey(v))) : wanted.includes(toKey(stored))
+                }
+                case '$ne': return toKey(stored) !== toKey(arg)
+                case '$size': return Array.isArray(stored) && stored.length === arg
+                case '$lte': return stored !== undefined && stored !== null && stored <= arg
+                case '$gte': return stored !== undefined && stored !== null && stored >= arg
+                default: throw new Error(`Operador no soportado por el fake: ${op}`)
+            }
+        })
     }
     if (Array.isArray(stored)) return stored.some((v) => toKey(v) === toKey(condition))
     return toKey(stored) === toKey(condition)
 }
 
-const matches = (row, filter = {}) => Object.entries(filter).every(([field, cond]) => matchesValue(row[field], cond))
+const matches = (row, filter = {}) =>
+    Object.entries(filter).every(([field, cond]) => {
+        if (field === '$or') return cond.some((sub) => matches(row, sub))
+        if (field === '$and') return cond.every((sub) => matches(row, sub))
+        return matchesValue(getPath(row, field), cond)
+    })
 
 const compareBy = (sort) => (a, b) => {
     for (const [field, direction] of Object.entries(sort)) {

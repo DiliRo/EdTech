@@ -1,0 +1,149 @@
+{
+  "metadata": {
+    "description": "Estrategias de aprendizaje predeterminadas de edTech, tomadas del módulo 'Metodología del Aprendizaje' (serie 'El Currículo organizado en competencias'), MINEDUC Guatemala, 2010, sección 1.4. Los textos son paráfrasis de la fuente; donde la fuente no describe algo se indica en sourceReference.notes.",
+    "reviewedBy": null
+  },
+  "methods": [
+    {
+      "defaultKey": "dialogo-de-saberes",
+      "name": "Diálogo de saberes",
+      "description": "Práctica pedagógica para construir aprendizajes significativos a partir de la conversación entre los conocimientos que traen estudiantes, docente y comunidad. Proviene de la educación popular y de la investigación comunitaria, y reconoce como válidos los saberes de todas las personas y culturas participantes.",
+      "objectives": [
+        "Construir una visión plural de la realidad.",
+        "Valorar por igual los conocimientos de todas las culturas.",
+        "Diversificar el aprendizaje según las diferencias culturales del grupo.",
+        "Construir conocimientos nuevos de forma cooperativa y contextualizada."
+      ],
+      "steps": [
+        { "title": "Plantear el tema", "description": "Presentar el contenido a trabajar y abrir una conversación sobre él desde la perspectiva cultural de los estudiantes y de su comunidad." },
+        { "title": "Expresar saberes", "description": "Invitar a que todas y todos expresen libremente lo que saben del tema, evitando que solo hable el docente." },
+        { "title": "Construir en conjunto", "description": "Relacionar los saberes compartidos con el nuevo contenido y construir el aprendizaje de forma cooperativa y contextualizada." }
+      ],
+      "suggestedActivities": [
+        { "title": "Conversación sobre un contenido", "description": "Conversación sobre un contenido específico desde la perspectiva de una cultura determinada." }
+      ],
+      "materials": [],
+      "estimatedDuration": null,
+      "learningPreferences": ["auditiva", "colaborativa"],
+      "sourceReference": {
+        "title": "Metodología del Aprendizaje (serie El Currículo organizado en competencias)",
+        "institution": "Ministerio de Educación de Guatemala (MINEDUC), Dirección General de Gestión de Calidad Educativa",
+        "year": 2010,
+        "section": "1.4.1 Diálogo de saberes",
+        "pages": "16",
+        "url": "https://digecur.mineduc.gob.gt/wp-content/uploads/2025/03/Metodologia-del-Aprendizaje.pdf",
+        "notes": "La fuente define la estrategia y sus propósitos, y cita a Balbín (Cinep, 1986). No describe pasos: los pasos fueron redactados por edTech a partir de la descripción y de las preguntas de reflexión del módulo. La fuente no indica duración ni materiales. Las preferencias de aprendizaje son una orientación de edTech, no provienen de la fuente."
+      }
+    },
+    {
+      "defaultKey": "mundo-letrado",
+      "name": "Mundo letrado",
+      "description": "Estrategia que da sentido al lenguaje oral y escrito organizando el aula como un ambiente letrado, con medios y materiales del entorno de los estudiantes que se exhiben o se consultan.",
+      "objectives": [
+        "Manejar material escrito.",
+        "Formar hábitos de lectura y escritura.",
+        "Desarrollar habilidades de pensamiento y de comunicación.",
+        "Integrar a los estudiantes con su cultura y su comunidad.",
+        "Relacionar conocimientos de distintas áreas.",
+        "Fomentar la investigación para resolver problemas."
+      ],
+      "steps": [
+        { "title": "Organizar el ambiente letrado", "description": "Preparar el aula con materiales escritos e ilustrados del entorno, visibles y al alcance de los estudiantes." },
+        { "title": "Promover la expresión", "description": "Organizar actividades de expresión oral y escrita que usen esos materiales." },
+        { "title": "Producir y exhibir", "description": "Pedir a los estudiantes que elaboren materiales propios para exhibirlos y renovarlos periódicamente." }
+      ],
+      "suggestedActivities": [
+        { "title": "Actividades de expresión oral y escrita" },
+        { "title": "Biblioteca de aula" },
+        { "title": "Producción de materiales por los estudiantes", "description": "Los estudiantes elaboran materiales que se exhiben en el aula." },
+        { "title": "Periódico mural", "description": "Publicación periódica en la pared del aula." },
+        { "title": "Revisión del CNB entre docentes", "description": "Revisar el CNB con un colega para identificar las competencias relacionadas con la estrategia." }
+      ],
+      "materials": [
+        "Carteles", "Rótulos", "Periódicos", "Tarjetas con palabras", "Tarjetas con imágenes",
+        "Fotografías", "Ilustraciones", "Trabajos de los estudiantes", "Diccionarios",
+        "Revistas para recortar", "Libros adecuados a la edad", "Recursos de la comunidad"
+      ],
+      "estimatedDuration": null,
+      "learningPreferences": ["visual", "lectoescritura"],
+      "sourceReference": {
+        "title": "Metodología del Aprendizaje (serie El Currículo organizado en competencias)",
+        "institution": "Ministerio de Educación de Guatemala (MINEDUC), Dirección General de Gestión de Calidad Educativa",
+        "year": 2010,
+        "section": "1.4.2 Mundo letrado",
+        "pages": "17",
+        "url": "https://digecur.mineduc.gob.gt/wp-content/uploads/2025/03/Metodologia-del-Aprendizaje.pdf",
+        "notes": "Definición, propósitos, actividades y materiales tomados de la fuente. La fuente no presenta una secuencia de pasos: los pasos fueron redactados por edTech a partir de la descripción. La fuente no indica duración. Las preferencias de aprendizaje son una orientación de edTech, no provienen de la fuente."
+      }
+    },
+    {
+      "defaultKey": "rincones-de-aprendizaje",
+      "name": "Rincones de aprendizaje",
+      "description": "Espacios físicos del aula donde se presentan materiales representativos del contexto y la cultura de los estudiantes, para aprender mediante el juego, la acción, la experimentación y el descubrimiento.",
+      "objectives": [
+        "Promover aprendizajes significativos.",
+        "Ofrecer un espacio para el juego libre y el aprendizaje.",
+        "Compartir experiencias.",
+        "Desarrollar competencias.",
+        "Orientar la autoevaluación y la coevaluación.",
+        "Conocer y valorar la cultura propia y la de otros pueblos."
+      ],
+      "steps": [
+        { "title": "Organizar el espacio", "description": "Distribuir el espacio para que los estudiantes se desplacen con comodidad y manipulen los materiales con seguridad." },
+        { "title": "Seleccionar los materiales", "description": "Elegir materiales según la época del año, las competencias y contenidos del CNB y la cultura de la comunidad." },
+        { "title": "Ofrecer oportunidades de acción", "description": "Plantear muchas oportunidades de acción, experimentación y descubrimiento en cada rincón." },
+        { "title": "Mantener los rincones con los estudiantes", "description": "Recolectar, ordenar y cuidar los materiales junto con los estudiantes." }
+      ],
+      "suggestedActivities": [
+        { "title": "Actividades lúdicas", "description": "Juegos que desarrollan habilidades y conocimientos." },
+        { "title": "Juegos tradicionales de la comunidad", "description": "Recuperar juegos tradicionales de la comunidad." }
+      ],
+      "materials": ["Materiales representativos del contexto y la cultura de los estudiantes"],
+      "estimatedDuration": null,
+      "learningPreferences": ["kinestesica", "visual", "colaborativa"],
+      "sourceReference": {
+        "title": "Metodología del Aprendizaje (serie El Currículo organizado en competencias)",
+        "institution": "Ministerio de Educación de Guatemala (MINEDUC), Dirección General de Gestión de Calidad Educativa",
+        "year": 2010,
+        "section": "1.4.3 Rincones de aprendizaje",
+        "pages": "18",
+        "url": "https://digecur.mineduc.gob.gt/wp-content/uploads/2025/03/Metodologia-del-Aprendizaje.pdf",
+        "notes": "Definición, propósitos, procedimiento, actividades y materiales tomados de la fuente (paráfrasis). La fuente no indica duración. Las preferencias de aprendizaje son una orientación de edTech, no provienen de la fuente."
+      }
+    },
+    {
+      "defaultKey": "aprendizaje-cooperativo",
+      "name": "Aprendizaje cooperativo",
+      "description": "Estrategia de trabajo en equipo en la que cada integrante aporta información y esfuerzo por igual. Desarrolla la comunicación, la escucha activa, el respeto al hablar y el intercambio y la síntesis de ideas.",
+      "objectives": [
+        "Resolver problemas.",
+        "Elevar la autoestima y la aceptación de las diferencias.",
+        "Fomentar actitudes positivas.",
+        "Mantener contacto directo con cada participante para alcanzar las metas.",
+        "Favorecer la interdependencia positiva.",
+        "Apoyar la organización y el funcionamiento del trabajo en grupo."
+      ],
+      "steps": [
+        { "title": "Formar equipos o comisiones", "description": "Organizar a los estudiantes en equipos o comisiones de trabajo." },
+        { "title": "Establecer la meta común", "description": "Ayudar a que los estudiantes comprendan que el éxito del grupo depende del esfuerzo de todos." },
+        { "title": "Acompañar el trabajo", "description": "Motivar y orientar a los equipos, promoviendo actitudes positivas, la escucha activa y la participación equitativa." }
+      ],
+      "suggestedActivities": [
+        { "title": "Comisiones de trabajo", "description": "Organización de los estudiantes en comisiones con responsabilidades compartidas." },
+        { "title": "Trabajo en equipos de tres o más", "description": "Ver también la sección 2.2.3 del mismo módulo." }
+      ],
+      "materials": [],
+      "estimatedDuration": null,
+      "learningPreferences": ["colaborativa", "auditiva"],
+      "sourceReference": {
+        "title": "Metodología del Aprendizaje (serie El Currículo organizado en competencias)",
+        "institution": "Ministerio de Educación de Guatemala (MINEDUC), Dirección General de Gestión de Calidad Educativa",
+        "year": 2010,
+        "section": "1.4.4 Aprendizaje cooperativo",
+        "pages": "19",
+        "url": "https://digecur.mineduc.gob.gt/wp-content/uploads/2025/03/Metodologia-del-Aprendizaje.pdf",
+        "notes": "Definición, propósitos y actividades tomados de la fuente. La fuente no presenta una secuencia de pasos: los pasos fueron redactados por edTech a partir del rol docente descrito. La fuente no indica duración ni materiales. Las preferencias de aprendizaje son una orientación de edTech, no provienen de la fuente."
+      }
+    }
+  ]
+}

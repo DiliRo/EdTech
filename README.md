@@ -4,7 +4,7 @@ Backend de **edTech**, plataforma de apoyo pedagógico para docentes de primaria
 
 Stack: Node.js (≥ 22) · Express 5 · MongoDB con Mongoose · módulos ES.
 
-> Estado: base del proyecto + **autenticación y perfil de docentes** + **catálogo académico (solo lectura)** + **aulas y estudiantes**.
+> Estado: base del proyecto + **autenticación y perfil de docentes** + **catálogo académico (solo lectura)** + **aulas y estudiantes** + **metodologías**.
 > Solo los docentes tienen cuenta; los estudiantes no tienen usuario, correo ni contraseña.
 
 ## Instalación
@@ -36,6 +36,12 @@ Cargar el catálogo de **prueba** (grados 1–6 y contenido de ejemplo marcado `
 
 ```bash
 npm run catalog:seed-sample
+```
+
+Cargar las metodologías predeterminadas (estrategias del MINEDUC):
+
+```bash
+npm run methodologies:seed
 ```
 
 Comprobar que funciona:
@@ -503,6 +509,152 @@ formato con `"isActive": false` y `"message": "Estudiante archivado"`.
 | Reactivar un estudiante de un aula archivada | 409 |
 | Dato personal o campo no permitido | 400 |
 
+### Metodologías
+
+Catálogo de metodologías y estrategias de enseñanza para usar en guías de clase.
+
+- **Predeterminadas** (`isDefault: true`): Diálogo de saberes, Mundo letrado, Rincones de aprendizaje
+  y Aprendizaje cooperativo, tomadas de *Metodología del Aprendizaje* (MINEDUC, 2010). Se cargan con
+  `npm run methodologies:seed` y **ningún docente puede editarlas ni archivarlas** (403).
+  Ver [`data/methodologies/README.md`](data/methodologies/README.md) para saber qué parte del
+  contenido viene de la fuente y qué es adaptación.
+- **Personalizadas**: cada docente crea las suyas. Solo su autor las ve, edita y archiva
+  (los demás reciben 404).
+- **Preferencias de aprendizaje** (`visual`, `auditiva`, `kinestesica`, `lectoescritura`,
+  `colaborativa`, `individual`): son descriptivas. Si se indican deben ser **al menos dos**; ninguna
+  metodología se asigna a un solo estilo de aprendizaje.
+- `compatibleSubjects` / `compatibleGrades` vacíos = aplicable a cualquier materia / grado.
+- `estimatedDuration: null` = la fuente no indica duración.
+- `DELETE` archiva (`isActive: false`). La metodología deja de listarse, pero su autor aún puede
+  consultarla por id y restaurarla con `PATCH { "isActive": true }`.
+
+| Método y ruta | Descripción |
+|---|---|
+| `GET /api/methodologies` | Predeterminadas + propias activas. Filtros abajo |
+| `GET /api/methodologies/:id` | Detalle completo: objetivos, pasos, actividades, materiales y fuente |
+| `POST /api/methodologies` | Crea una metodología propia |
+| `PATCH /api/methodologies/:id` | Edita una propia (403 si es predeterminada) |
+| `DELETE /api/methodologies/:id` | Archiva una propia (403 si es predeterminada) |
+
+**Filtros de `GET /api/methodologies`**
+
+| Parámetro | Ejemplo | Efecto |
+|---|---|---|
+| `scope` | `all` (defecto), `default`, `mine` | Alcance |
+| `subject` | id | Generales + compatibles con esa materia |
+| `grade` | id | Generales + compatibles con ese grado |
+| `maxDuration` | `30` | Duración mínima ≤ 30 minutos (excluye las que no indican duración) |
+| `learningPreferences` | `visual,kinestesica` | Coincide con **alguna** de las preferencias |
+
+La respuesta incluye `meta.learningPreferences` con los códigos y sus etiquetas.
+
+#### `POST /api/methodologies`
+
+```json
+{
+  "name": "Lectura en voz alta por turnos",
+  "description": "Estrategia propia para practicar fluidez lectora.",
+  "objectives": ["Mejorar la fluidez lectora"],
+  "steps": [
+    { "title": "Modelar", "description": "El docente lee un párrafo en voz alta." },
+    { "description": "Cada estudiante lee un párrafo." }
+  ],
+  "suggestedActivities": [{ "title": "Lectura en parejas" }],
+  "materials": ["Libro de lectura"],
+  "estimatedDuration": { "minMinutes": 20, "maxMinutes": 35 },
+  "compatibleSubjects": [],
+  "compatibleGrades": [],
+  "learningPreferences": ["auditiva", "lectoescritura"],
+  "sourceReference": null
+}
+```
+
+Solo `name` y `description` son obligatorios. `isDefault`, `createdBy`, `defaultKey` e `isActive`
+se rechazan.
+
+**201**
+```json
+{
+  "success": true,
+  "message": "Metodología creada",
+  "data": {
+    "methodology": {
+      "name": "Lectura en voz alta por turnos",
+      "description": "Estrategia propia para practicar fluidez lectora.",
+      "objectives": ["Mejorar la fluidez lectora"],
+      "steps": [
+        { "title": "Modelar", "description": "El docente lee un párrafo en voz alta." },
+        { "description": "Cada estudiante lee un párrafo." }
+      ],
+      "suggestedActivities": [{ "title": "Lectura en parejas" }],
+      "materials": ["Libro de lectura"],
+      "estimatedDuration": { "minMinutes": 20, "maxMinutes": 35 },
+      "compatibleSubjects": [],
+      "compatibleGrades": [],
+      "learningPreferences": ["auditiva", "lectoescritura"],
+      "isDefault": false,
+      "createdBy": "6b01e8953a62794870353e7c",
+      "sourceReference": null,
+      "isActive": true,
+      "createdAt": "2026-11-21T18:53:09.073Z",
+      "updatedAt": "2026-11-21T18:53:09.073Z",
+      "id": "6b01e8953a62794870353e7d"
+    }
+  }
+}
+```
+
+**400** (una sola preferencia)
+```json
+{
+  "success": false,
+  "message": "Errores de validación",
+  "errors": [{ "field": "learningPreferences", "message": "Indica al menos dos preferencias: una metodología no es exclusiva de un estilo de aprendizaje" }]
+}
+```
+
+#### `GET /api/methodologies/:id` (predeterminada, resumida)
+
+```json
+{
+  "success": true,
+  "message": "Metodología",
+  "data": {
+    "methodology": {
+      "name": "Mundo letrado",
+      "description": "Estrategia que da sentido al lenguaje oral y escrito organizando el aula como un ambiente letrado...",
+      "objectives": ["Manejar material escrito.", "Formar hábitos de lectura y escritura.", "..."],
+      "steps": [{ "title": "Organizar el ambiente letrado", "description": "..." }, "..."],
+      "suggestedActivities": [{ "title": "Biblioteca de aula" }, { "title": "Periódico mural", "description": "..." }, "..."],
+      "materials": ["Carteles", "Rótulos", "Periódicos", "..."],
+      "estimatedDuration": null,
+      "compatibleSubjects": [],
+      "compatibleGrades": [],
+      "learningPreferences": ["visual", "lectoescritura"],
+      "isDefault": true,
+      "defaultKey": "mundo-letrado",
+      "createdBy": null,
+      "sourceReference": {
+        "title": "Metodología del Aprendizaje (serie El Currículo organizado en competencias)",
+        "institution": "Ministerio de Educación de Guatemala (MINEDUC), Dirección General de Gestión de Calidad Educativa",
+        "year": 2010,
+        "section": "1.4.2 Mundo letrado",
+        "pages": "17",
+        "url": "https://digecur.mineduc.gob.gt/wp-content/uploads/2025/03/Metodologia-del-Aprendizaje.pdf",
+        "notes": "Definición, propósitos, actividades y materiales tomados de la fuente. La fuente no presenta una secuencia de pasos: ..."
+      },
+      "isActive": true,
+      "id": "6b01e8953a62794870353e79"
+    }
+  }
+}
+```
+
+**403** (editar o archivar una predeterminada)
+```json
+{ "success": false, "message": "Las metodologías predeterminadas no se pueden modificar. Puedes crear una propia basada en ella." }
+```
+
 ### Formato de errores
 
 Todas las respuestas de error usan:
@@ -537,7 +689,8 @@ src/
 │   ├── db.js               # conexión a MongoDB con Mongoose
 │   ├── languages.js        # idiomas soportados (fuente única)
 │   ├── curriculum.js       # niveles, rango de grados, orígenes y marca [PRUEBA]
-│   └── classroom.js        # formato de studentCode, límites y filtros de estado
+│   ├── classroom.js        # formato de studentCode, límites y filtros de estado
+│   └── methodology.js      # preferencias de aprendizaje, límites y alcances
 ├── models/
 │   ├── teacher.model.js    # Teacher (único usuario del sistema)
 │   ├── catalog.shared.js   # procedencia (source) y toJSON comunes del catálogo
@@ -545,7 +698,8 @@ src/
 │   ├── subject.model.js
 │   ├── topic.model.js      # incluye toAIContext()
 │   ├── classroom.model.js
-│   └── student.model.js    # solo studentCode, classroomId, isActive (strict: 'throw')
+│   ├── student.model.js    # solo studentCode, classroomId, isActive (strict: 'throw')
+│   └── teachingMethod.model.js
 ├── routes/
 │   ├── index.js            # registra todas las rutas bajo /api
 │   ├── health.routes.js
@@ -553,14 +707,16 @@ src/
 │   ├── teacher.routes.js   # /api/teachers/me
 │   ├── catalog.routes.js   # /api/grades, /api/subjects, /api/topics (solo GET)
 │   ├── classroom.routes.js # /api/classrooms y /api/classrooms/:id/students
-│   └── student.routes.js   # /api/students/:id
+│   ├── student.routes.js   # /api/students/:id
+│   └── methodology.routes.js
 ├── controllers/
 │   ├── health.controller.js
 │   ├── auth.controller.js
 │   ├── teacher.controller.js
 │   ├── catalog.controller.js
 │   ├── classroom.controller.js
-│   └── student.controller.js
+│   ├── student.controller.js
+│   └── methodology.controller.js
 ├── services/
 │   ├── health.service.js   # estado real de la BD (readyState + ping con timeout)
 │   ├── auth.service.js     # registro y login
@@ -568,7 +724,9 @@ src/
 │   ├── catalog.service.js  # consultas del catálogo
 │   ├── catalogImport.service.js  # validación de referencias e importación
 │   ├── classroom.service.js      # findOwnedClassroom: comprobación de propiedad
-│   └── student.service.js
+│   ├── student.service.js
+│   ├── methodology.service.js      # visibilidad, filtros y reglas de edición
+│   └── methodologySeed.service.js  # carga repetible de predeterminadas
 ├── middlewares/
 │   ├── auth.middleware.js       # requireAuth: verifica JWT y carga req.teacher
 │   ├── rateLimit.middleware.js  # límites de login y registro
@@ -582,16 +740,22 @@ src/
 │   ├── catalog.validator.js      # parámetros de consulta del catálogo
 │   ├── catalogFile.validator.js  # estructura de los archivos JSON del catálogo
 │   ├── classroom.validator.js
-│   └── student.validator.js      # rechaza datos personales
+│   ├── student.validator.js      # rechaza datos personales
+│   └── methodology.validator.js
 └── utils/
     ├── AppError.js         # error controlado con código HTTP
     ├── password.js         # bcrypt (hash y comparación)
     └── jwt.js              # firma y verificación de tokens
 scripts/
-└── importCatalog.js        # CLI de importación del catálogo
-data/catalog/
-├── README.md               # formato y reglas de los catálogos
-└── sample.catalog.json     # datos de PRUEBA (no oficiales)
+├── importCatalog.js        # CLI de importación del catálogo
+└── seedMethodologies.js    # CLI de carga de metodologías predeterminadas
+data/
+├── catalog/
+│   ├── README.md           # formato y reglas de los catálogos
+│   └── sample.catalog.json # datos de PRUEBA (no oficiales)
+└── methodologies/
+    ├── README.md           # fuente y alcance del contenido
+    └── mineduc-defaults.json
 tests/
 ├── setup-env.js            # entorno aislado para pruebas
 ├── helpers/                # modelos falsos en memoria y datos de prueba

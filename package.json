@@ -11,7 +11,8 @@
     "test:unit": "node --import ./tests/setup-env.js --test \"tests/unit/**/*.test.js\"",
     "test:integration": "node --import ./tests/setup-env.js --test \"tests/integration/**/*.test.js\"",
     "catalog:import": "node scripts/importCatalog.js",
-    "catalog:seed-sample": "node scripts/importCatalog.js data/catalog/sample.catalog.json"
+    "catalog:seed-sample": "node scripts/importCatalog.js data/catalog/sample.catalog.json",
+    "methodologies:seed": "node scripts/seedMethodologies.js"
   },
   "engines": {
     "node": ">=22"
