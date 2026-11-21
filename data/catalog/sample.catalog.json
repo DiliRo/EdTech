@@ -1,0 +1,73 @@
+{
+  "metadata": {
+    "source": "sample",
+    "level": "primaria"
+  },
+  "grades": [
+    { "number": 1, "name": "Primer grado" },
+    { "number": 2, "name": "Segundo grado" },
+    { "number": 3, "name": "Tercer grado" },
+    { "number": 4, "name": "Cuarto grado" },
+    { "number": 5, "name": "Quinto grado" },
+    { "number": 6, "name": "Sexto grado" }
+  ],
+  "subjects": [
+    {
+      "code": "prueba-matematicas",
+      "name": "[PRUEBA] Matemáticas",
+      "description": "[PRUEBA] Materia de ejemplo para desarrollo. No es contenido oficial del CNB.",
+      "grades": [1, 2, 3]
+    },
+    {
+      "code": "prueba-comunicacion",
+      "name": "[PRUEBA] Comunicación y Lenguaje",
+      "description": "[PRUEBA] Materia de ejemplo para desarrollo. No es contenido oficial del CNB.",
+      "grades": [1, 2]
+    }
+  ],
+  "topics": [
+    {
+      "code": "tema-ejemplo-1",
+      "name": "[PRUEBA] Tema de ejemplo 1",
+      "description": "[PRUEBA] Texto de relleno para probar la interfaz.",
+      "grade": 1,
+      "subject": "prueba-matematicas",
+      "competencies": [
+        { "code": "P1", "description": "[PRUEBA] Competencia de ejemplo; no proviene del CNB." }
+      ],
+      "achievementIndicators": [
+        { "code": "P1.1", "competencyCode": "P1", "description": "[PRUEBA] Indicador de ejemplo; no proviene del CNB." },
+        { "code": "P1.2", "competencyCode": "P1", "description": "[PRUEBA] Segundo indicador de ejemplo." }
+      ],
+      "curriculumReference": { "document": "Ninguno: datos de prueba" }
+    },
+    {
+      "code": "tema-ejemplo-2",
+      "name": "[PRUEBA] Tema de ejemplo 2",
+      "description": "[PRUEBA] Texto de relleno para probar la interfaz.",
+      "grade": 2,
+      "subject": "prueba-matematicas",
+      "competencies": [
+        { "code": "P2", "description": "[PRUEBA] Competencia de ejemplo; no proviene del CNB." }
+      ],
+      "achievementIndicators": [
+        { "code": "P2.1", "competencyCode": "P2", "description": "[PRUEBA] Indicador de ejemplo; no proviene del CNB." }
+      ],
+      "curriculumReference": { "document": "Ninguno: datos de prueba" }
+    },
+    {
+      "code": "tema-ejemplo-3",
+      "name": "[PRUEBA] Tema de ejemplo 3",
+      "description": "[PRUEBA] Texto de relleno para probar la interfaz.",
+      "grade": 1,
+      "subject": "prueba-comunicacion",
+      "competencies": [
+        { "code": "P3", "description": "[PRUEBA] Competencia de ejemplo; no proviene del CNB." }
+      ],
+      "achievementIndicators": [
+        { "code": "P3.1", "competencyCode": "P3", "description": "[PRUEBA] Indicador de ejemplo; no proviene del CNB." }
+      ],
+      "curriculumReference": { "document": "Ninguno: datos de prueba" }
+    }
+  ]
+}
