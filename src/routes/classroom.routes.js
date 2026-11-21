@@ -16,6 +16,8 @@ import {
     classroomIdValidator
 } from '../validators/classroom.validator.js'
 import { listStudentsValidator, createStudentValidator } from '../validators/student.validator.js'
+import { getPerformanceOfClassroom } from '../controllers/assessment.controller.js'
+import { classroomPerformanceValidator } from '../validators/assessment.validator.js'
 
 // Todas las rutas son privadas; cada servicio además comprueba que el aula sea del docente.
 const router = Router()
@@ -29,5 +31,7 @@ router.delete('/:id', classroomIdValidator, deleteClassroom) // archivado lógic
 
 router.get('/:id/students', listStudentsValidator, getClassroomStudents)
 router.post('/:id/students', createStudentValidator, postClassroomStudent)
+
+router.get('/:id/performance', classroomPerformanceValidator, getPerformanceOfClassroom)
 
 export default router

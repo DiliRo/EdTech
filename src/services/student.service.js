@@ -34,7 +34,7 @@ const saveHandlingDuplicates = async (student) => {
  * Busca un estudiante y comprueba que su aula sea del docente.
  * Si el aula es de otro docente responde 404 igual que si no existiera.
  */
-const findOwnedStudent = async (teacherId, studentId) => {
+export const findOwnedStudent = async (teacherId, studentId) => {
     const student = await Student.findById(studentId)
     if (!student) throw new AppError(404, STUDENT_NOT_FOUND)
     try {

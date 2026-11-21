@@ -27,7 +27,10 @@ export const env = {
     // Protección contra intentos repetidos
     loginMaxAttempts: toInt(process.env.LOGIN_MAX_ATTEMPTS, 5),
     loginWindowMinutes: toInt(process.env.LOGIN_WINDOW_MINUTES, 15),
-    registerMaxPerHour: toInt(process.env.REGISTER_MAX_PER_HOUR, 10)
+    registerMaxPerHour: toInt(process.env.REGISTER_MAX_PER_HOUR, 10),
+
+    // Umbral (porcentaje de logro) para señalar resultados que pueden requerir acompañamiento
+    performanceThreshold: toInt(process.env.PERFORMANCE_THRESHOLD, 60, { min: 0, max: 100 })
 }
 
 export const isTest = () => env.nodeEnv === 'test'
