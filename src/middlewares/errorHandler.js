@@ -1,3 +1,4 @@
+import mongoose from 'mongoose'
 import { AppError } from '../utils/AppError.js'
 import { isTest } from '../config/env.js'
 
@@ -25,6 +26,30 @@ export const errorHandler = (err, req, res, next) => {
 
     if (err?.type === 'entity.too.large') {
         return res.status(413).json({ success: false, message: 'El cuerpo de la petición es demasiado grande' })
+    }
+
+    // Validación del esquema de Mongoose: los mensajes vienen de los modelos y son seguros.
+    if (err instanceof mongoose.Error.ValidationError) {
+        return res.status(400).json({
+            success: false,
+            message: 'Errores de validación',
+            errors: Object.values(err.errors).map((e) => ({ field: e.path, message: e.message }))
+        })
+    }
+
+    // Id con formato inválido: no se repite el valor recibido.
+    if (err instanceof mongoose.Error.CastError) {
+        return res.status(400).json({ success: false, message: 'Identificador inválido' })
+    }
+
+    // Índice único violado: no se repite el valor duplicado.
+    if (err?.code === 11000) {
+        const field = Object.keys(err.keyPattern || {})[0]
+        return res.status(409).json({
+            success: false,
+            message: 'Ya existe un registro con ese valor',
+            ...(field ? { errors: [{ field, message: 'Valor duplicado' }] } : {})
+        })
     }
 
     // Error inesperado: se registra en el servidor y el cliente solo recibe un mensaje genérico.
